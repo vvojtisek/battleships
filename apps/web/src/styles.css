@@ -1,0 +1,187 @@
+:root {
+  color: #142033;
+  background: #eef3f8;
+  font-family: system-ui, sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+button,
+select {
+  font: inherit;
+}
+button,
+.primary-link {
+  min-height: 44px;
+  border: 1px solid #8ea0b5;
+  border-radius: 8px;
+  background: white;
+  color: inherit;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+button:focus-visible,
+a:focus-visible,
+select:focus-visible {
+  outline: 3px solid #006fe6;
+  outline-offset: 2px;
+}
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 5vw;
+  border-bottom: 1px solid #cad4df;
+}
+nav a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+nav label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+main {
+  width: min(1120px, 92vw);
+  margin: 2rem auto;
+}
+.landing {
+  min-height: 70vh;
+  display: grid;
+  place-content: center;
+  max-width: 680px;
+}
+.landing h1 {
+  margin: 0;
+  font-size: clamp(3rem, 10vw, 6rem);
+}
+.landing p {
+  font-size: 1.2rem;
+  line-height: 1.6;
+}
+.eyebrow {
+  margin: 0;
+  color: #43627f;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.primary-link {
+  width: fit-content;
+  background: #087af5;
+  color: white;
+  text-decoration: none;
+  border-color: #087af5;
+}
+.game-layout,
+.boards {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.75fr) minmax(300px, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+.boards {
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+.panel {
+  background: white;
+  border: 1px solid #cad4df;
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+.fleet-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.fleet-list button {
+  text-align: left;
+  text-transform: capitalize;
+}
+.fleet-list .selected {
+  border-color: #087af5;
+  box-shadow: 0 0 0 2px #087af5 inset;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.column-labels {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  margin-left: 1.5rem;
+  text-align: center;
+  font-size: 0.75rem;
+}
+.board {
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  border-top: 1px solid #6d8299;
+  border-left: 1px solid #6d8299;
+}
+.cell {
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid #6d8299;
+  border-bottom: 1px solid #6d8299;
+  border-radius: 0;
+  background: #dceefa;
+  font-weight: 800;
+}
+.cell:hover:not(:disabled),
+.cell:focus-visible {
+  background: #b8ddf5;
+}
+.cell.ship {
+  background: #718399;
+  color: white;
+}
+.cell.miss {
+  background: #c7d4df;
+  color: #53677c;
+}
+.cell.hit {
+  background: #ec625f;
+  color: white;
+}
+.battle-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.error {
+  width: min(1120px, 92vw);
+  margin: 1rem auto;
+  padding: 0.75rem;
+  border: 1px solid #b3261e;
+  color: #8c1d18;
+  background: #fff0ef;
+}
+
+@media (max-width: 760px) {
+  .game-layout,
+  .boards {
+    grid-template-columns: 1fr;
+  }
+  .controls {
+    order: 2;
+  }
+}

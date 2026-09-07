@@ -4,8 +4,16 @@ A modern, browser-based Battleship game: single-player against a probability-dri
 and real-time two-player matches over shareable room links, with an Apple
 Human-Interface-Guidelines-inspired interface.
 
-**Status: planning.** No application code has been written yet. The complete technical
-plan lives in [`docs/architecture/`](./docs/architecture/README.md).
+**Status: Phase 2 complete.** The workspace foundation, dependency-free rules engine,
+and offline single-player browser game are implemented. The complete technical plan lives in
+[`docs/architecture/`](./docs/architecture/README.md).
+
+## Development
+
+Requires Node.js 22+ and pnpm 11. Install with `pnpm install`, then run the standard
+gates with `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, and `pnpm -r build`.
+The engine additionally provides `pnpm --filter @bs/engine play` for a headless game
+and `pnpm --filter @bs/engine bench` for the 10,000-game-per-tier AI regression gate.
 
 ## The plan
 

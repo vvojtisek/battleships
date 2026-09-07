@@ -1,0 +1,12 @@
+{
+  "name": "@bs/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  }
+}
