@@ -14,6 +14,19 @@ interface SocketSession {
   code?: string;
 }
 
+class TokenBucket {
+  private tokens = 20;
+  private updatedAt = Date.now();
+
+  public take(now = Date.now()): boolean {
+    this.tokens = Math.min(20, this.tokens + ((now - this.updatedAt) / 1000) * 10);
+    this.updatedAt = now;
+    if (this.tokens < 1) return false;
+    this.tokens -= 1;
+    return true;
+  }
+}
+
 function parseJson(raw: string): unknown {
   return JSON.parse(raw, (key, value: unknown) =>
     key === '__proto__' || key === 'constructor' || key === 'prototype' ? undefined : value,
@@ -68,6 +81,10 @@ export async function buildServer(registry = new RoomRegistry()): Promise<Fastif
 
   app.get('/ws', { websocket: true }, (socket) => {
     const session: SocketSession = { hello: false };
+    const bucket = new TokenBucket();
+    const helloTimeout = setTimeout(() => {
+      if (!session.hello) socket.close(4408, 'hello timeout');
+    }, 5_000);
     const send = (message: ServerMessage | Record<string, unknown>) =>
       socket.send(JSON.stringify(message));
     const close = (code: number, detail: string) => socket.close(code, detail);
@@ -75,6 +92,7 @@ export async function buildServer(registry = new RoomRegistry()): Promise<Fastif
     socket.on('message', (raw: Buffer, isBinary: boolean) => {
       if (isBinary || Buffer.byteLength(raw) > MAX_FRAME_BYTES)
         return close(4400, 'frame rejected');
+      if (!bucket.take()) return close(4429, 'rate limit');
       let parsed: unknown;
       try {
         parsed = parseJson(raw.toString());
@@ -85,6 +103,10 @@ export async function buildServer(registry = new RoomRegistry()): Promise<Fastif
       if (!envelope.success)
         return send({ type: 'error', code: 'E_MALFORMED', detail: 'invalid envelope' });
       handleEnvelope(envelope.data, session, registry, send, close);
+    });
+    socket.on('close', () => {
+      clearTimeout(helloTimeout);
+      if (session.playerId && session.code) registry.find(session.code)?.detach(session.playerId);
     });
   });
   return app;

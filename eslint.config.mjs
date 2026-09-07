@@ -62,6 +62,15 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/server/test/websocket.test.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+  {
     files: ['packages/engine/src/**/*.ts'],
     rules: {
       'no-restricted-syntax': [

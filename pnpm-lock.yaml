@@ -65,6 +65,10 @@ importers:
       fastify:
         specifier: ^5.6.0
         version: 5.12.3
+    devDependencies:
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.3
 
   apps/web:
     dependencies:
