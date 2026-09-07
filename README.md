@@ -1,0 +1,42 @@
+# Battleships
+
+A modern, browser-based Battleship game: single-player against a probability-driven AI,
+and real-time two-player matches over shareable room links, with an Apple
+Human-Interface-Guidelines-inspired interface.
+
+**Status: planning.** No application code has been written yet. The complete technical
+plan lives in [`docs/architecture/`](./docs/architecture/README.md).
+
+## The plan
+
+| # | Document | Contents |
+|---|---|---|
+| — | [Overview & decision log](./docs/architecture/README.md) | Executive summary, ADRs, repo layout |
+| 1 | [Tech stack](./docs/architecture/01-tech-stack.md) | Frontend, backend, transport, hosting, CI/CD — with rejected alternatives |
+| 2 | [System architecture](./docs/architecture/02-system-architecture.md) | Room actors, lifecycle state machine, WebSocket protocol, resume |
+| 3 | [Data models](./docs/architecture/03-data-models.md) | Bitboards, ship/room schemas, Zod wire contract, projections |
+| 4 | [Core algorithms](./docs/architecture/04-core-algorithms.md) | Placement validation, fog of war, hunt/target and density-map AI |
+| 5 | [Design system](./docs/architecture/05-design-system.md) | Color, type, materials, grid, spring physics, accessibility |
+| 6 | [Roadmap](./docs/architecture/06-roadmap.md) | Phase 0 → production, with exit criteria |
+| 7 | [Testing & security](./docs/architecture/07-testing-security.md) | Test pyramid, anti-cheat, hardening, threat model |
+
+## Design in one paragraph
+
+The rules are implemented once, as a dependency-free pure TypeScript package
+(`@bs/engine`), and consumed unchanged by the browser, the server, and the tests — so
+client and server can never disagree about what is legal. Single-player runs entirely in
+the browser (Web Worker, no network, works offline). Multiplayer is server-authoritative:
+each room is a single-writer actor holding full-information state, and every outbound
+message passes through one projection function that strips what the recipient is not
+entitled to see. That single boundary is what makes "open DevTools to see the opponent's
+ships" impossible rather than merely inconvenient.
+
+## Game rules
+
+Standard 10×10 Battleship. Fleet: Carrier (5), Battleship (4), Cruiser (3),
+Submarine (3), Destroyer (2) — 17 cells total. One shot per turn regardless of outcome.
+Ships may touch (standard Milton Bradley rules); the no-touch variant is a `RuleSet` flag.
+
+## License
+
+See [LICENSE](./LICENSE).
