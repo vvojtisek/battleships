@@ -51,7 +51,11 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)(tsx@4.23.13)(yaml@2.9.0)
 
-  apps/server: {}
+  apps/server:
+    dependencies:
+      '@bs/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
 
   apps/web:
     dependencies:
