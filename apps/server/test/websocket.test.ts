@@ -30,6 +30,14 @@ function receive(url: string, frames: readonly object[]): Promise<unknown[]> {
   });
 }
 
+function closeCode(url: string, origin: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { origin });
+    socket.once('error', reject);
+    socket.once('close', (code) => resolve(code));
+  });
+}
+
 describe('WebSocket gateway', () => {
   it('resumes a created room and returns only its projected snapshot', async () => {
     const app = await buildServer();
@@ -98,5 +106,15 @@ describe('WebSocket gateway', () => {
     };
     expect(snapshot.state.opponent.displayName).toBe('Ada');
     expect(snapshot.state.opponent).not.toHaveProperty('ships');
+  });
+
+  it('rejects browser sockets from an untrusted origin', async () => {
+    const app = await buildServer();
+    apps.push(app);
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const { port } = app.server.address() as AddressInfo;
+    await expect(closeCode(`ws://127.0.0.1:${port}/ws`, 'https://attacker.invalid')).resolves.toBe(
+      4403,
+    );
   });
 });

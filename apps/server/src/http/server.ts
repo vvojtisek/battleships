@@ -8,6 +8,10 @@ import { RoomRegistry } from '../room/RoomRegistry.js';
 
 const MAX_FRAME_BYTES = 4 * 1024;
 
+export interface ServerOptions {
+  readonly allowedOrigins?: readonly string[];
+}
+
 interface SocketSession {
   hello: boolean;
   playerId?: PlayerId;
@@ -62,8 +66,12 @@ function displayName(value: unknown): string | null {
     : null;
 }
 
-export async function buildServer(registry = new RoomRegistry()): Promise<FastifyInstance> {
+export async function buildServer(
+  registry = new RoomRegistry(),
+  options: ServerOptions = {},
+): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: MAX_FRAME_BYTES });
+  const allowedOrigins = new Set(options.allowedOrigins ?? ['http://localhost:5173']);
   await app.register(websocket, {
     options: { maxPayload: MAX_FRAME_BYTES, perMessageDeflate: false },
   });
@@ -79,7 +87,9 @@ export async function buildServer(registry = new RoomRegistry()): Promise<Fastif
       .send({ code: room.code, playerId: room.playerId, resumeToken: room.resumeToken });
   });
 
-  app.get('/ws', { websocket: true }, (socket) => {
+  app.get('/ws', { websocket: true }, (socket, request) => {
+    const origin = request.headers.origin;
+    if (origin && !allowedOrigins.has(origin)) return socket.close(4403, 'origin rejected');
     const session: SocketSession = { hello: false };
     const bucket = new TokenBucket();
     const helloTimeout = setTimeout(() => {
