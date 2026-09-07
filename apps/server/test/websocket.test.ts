@@ -16,7 +16,13 @@ function receive(url: string, frames: readonly object[]): Promise<unknown[]> {
     socket.on('open', () => frames.forEach((frame) => socket.send(JSON.stringify(frame))));
     socket.on('message', (raw) => {
       messages.push(JSON.parse(raw.toString()) as unknown);
-      if (messages.some((message) => (message as { type?: string }).type === 'conn.ready')) {
+      if (
+        messages.some(
+          (message) =>
+            (message as { type?: string; playerId?: string | null }).type === 'conn.ready' &&
+            (message as { playerId?: string | null }).playerId !== null,
+        )
+      ) {
         socket.close();
         resolve(messages);
       }
@@ -48,6 +54,49 @@ describe('WebSocket gateway', () => {
     const snapshot = messages.find(
       (message) => (message as { type?: string }).type === 'room.snapshot',
     ) as { state: { opponent: unknown } };
+    expect(snapshot.state.opponent).not.toHaveProperty('ships');
+  });
+
+  it('lets a second authenticated socket join without disclosing fleet cells', async () => {
+    const app = await buildServer();
+    apps.push(app);
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/rooms',
+      payload: { displayName: 'Ada' },
+    });
+    const room = created.json();
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const { port } = app.server.address() as AddressInfo;
+    const url = `ws://127.0.0.1:${port}/ws`;
+    await receive(url, [
+      {
+        v: 1,
+        cmdId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        type: 'conn.hello',
+        payload: { clientVersion: 'test', resumeToken: room.resumeToken },
+      },
+    ]);
+    const joined = await receive(url, [
+      {
+        v: 1,
+        cmdId: '01ARZ3NDEKTSV4RRFFQ69G5FAW',
+        type: 'conn.hello',
+        payload: { clientVersion: 'test' },
+      },
+      {
+        v: 1,
+        cmdId: '01ARZ3NDEKTSV4RRFFQ69G5FAX',
+        type: 'room.join',
+        payload: { code: room.code, displayName: 'Lin' },
+      },
+    ]);
+    const snapshot = joined.find(
+      (message) => (message as { type?: string }).type === 'room.snapshot',
+    ) as {
+      state: { opponent: { displayName: string | null } };
+    };
+    expect(snapshot.state.opponent.displayName).toBe('Ada');
     expect(snapshot.state.opponent).not.toHaveProperty('ships');
   });
 });
