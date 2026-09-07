@@ -18,14 +18,16 @@ export interface ResumedPlayer {
 
 interface RegisteredRoom {
   readonly actor: RoomActor;
-  readonly tokens: Map<string, PlayerId>;
+  readonly tokens: Map<string, { readonly playerId: PlayerId; readonly expiresAt: number }>;
 }
 
 /** In-memory room directory. Redis ownership/snapshots are the next deployment slice. */
 export class RoomRegistry {
   private readonly rooms = new Map<string, RegisteredRoom>();
 
-  public create(displayName: string, now = Date.now()): CreatedRoom {
+  public constructor(private readonly now: () => number = Date.now) {}
+
+  public create(displayName: string, now = this.now()): CreatedRoom {
     const code = this.nextCode();
     const creator = playerId(randomUUID());
     const token = this.token();
@@ -39,7 +41,7 @@ export class RoomRegistry {
         now,
       }),
     );
-    this.rooms.set(code, { actor, tokens: new Map([[token, creator]]) });
+    this.rooms.set(code, { actor, tokens: new Map([[token, this.tokenRecord(creator)]]) });
     return { code, playerId: creator, resumeToken: token };
   }
 
@@ -49,8 +51,13 @@ export class RoomRegistry {
 
   public resume(token: string): ResumedPlayer | undefined {
     for (const [code, room] of this.rooms) {
-      const player = room.tokens.get(token);
-      if (player) return { actor: room.actor, playerId: player, code };
+      const record = room.tokens.get(token);
+      if (!record) continue;
+      if (record.expiresAt <= this.now()) {
+        room.tokens.delete(token);
+        continue;
+      }
+      return { actor: room.actor, playerId: record.playerId, code };
     }
     return undefined;
   }
@@ -59,7 +66,7 @@ export class RoomRegistry {
     const room = this.rooms.get(code);
     if (!room) return undefined;
     const token = this.token();
-    room.tokens.set(token, player);
+    room.tokens.set(token, this.tokenRecord(player));
     return token;
   }
 
@@ -72,5 +79,12 @@ export class RoomRegistry {
 
   private token(): string {
     return randomBytes(32).toString('base64url');
+  }
+
+  private tokenRecord(playerId: PlayerId): {
+    readonly playerId: PlayerId;
+    readonly expiresAt: number;
+  } {
+    return { playerId, expiresAt: this.now() + 10 * 60 * 1000 };
   }
 }
