@@ -52,6 +52,10 @@ export class RoomActor {
     this.connections.delete(player);
   }
 
+  public hasPlayer(player: PlayerId): boolean {
+    return this.state.players[player] !== undefined;
+  }
+
   public submit(from: PlayerId, command: Command, cmdId: string): void {
     if (command.actor !== from)
       throw new Error('command actor must match authenticated connection');

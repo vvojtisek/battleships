@@ -94,7 +94,11 @@ export const ClientEnvelopeSchema = z.discriminatedUnion('type', [
 ]);
 
 export type ClientCommand = z.infer<typeof ClientCommandSchema>;
-export type ClientEnvelope = z.infer<typeof ClientEnvelopeSchema>;
+/** Kept as an intersection so discriminating on `type` also narrows `payload`. */
+export type ClientEnvelope = z.infer<typeof ClientCommandSchema> & {
+  readonly v: typeof PROTOCOL_VERSION;
+  readonly cmdId: string;
+};
 
 export interface Transport<TCommand, TEvent> {
   send(command: TCommand): void;
