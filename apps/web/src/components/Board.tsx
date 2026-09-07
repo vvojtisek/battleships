@@ -48,12 +48,13 @@ export function Board({
           <span key={letter}>{letter}</span>
         ))}
       </div>
-      <div className="board">
+      <div aria-label={label} className="board" role="grid">
         {Array.from({ length: 100 }, (_, index) => {
           const cell = index as Cell;
           const wasShot = has(shots, cell);
           const wasHit = has(hits, cell);
           const occupied = has(fleet, cell);
+          const state = wasHit ? 'hit' : wasShot ? 'miss' : occupied ? 'ship' : 'unknown';
           const className = [
             'cell',
             occupied ? 'ship' : '',
@@ -63,10 +64,11 @@ export function Board({
             .join(' ');
           return (
             <button
-              aria-label={`${String.fromCharCode(65 + (index % 10))}${Math.floor(index / 10) + 1}${wasHit ? ', hit' : wasShot ? ', miss' : occupied ? ', ship' : ''}`}
+              aria-label={`${String.fromCharCode(65 + (index % 10))}${Math.floor(index / 10) + 1}, ${state}`}
               className={className}
               data-board={label}
               data-cell={index}
+              data-state={state}
               disabled={disabled || wasShot}
               key={index}
               onClick={() => onCell?.(cell)}
@@ -80,7 +82,7 @@ export function Board({
               onKeyDown={(event) => moveFocus(event, index)}
               type="button"
             >
-              <span aria-hidden="true">{wasHit ? '×' : wasShot ? '•' : occupied ? '■' : ''}</span>
+              <span aria-hidden="true" />
             </button>
           );
         })}

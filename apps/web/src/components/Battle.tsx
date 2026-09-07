@@ -27,7 +27,7 @@ export function Battle({ snapshot, send, onNewGame }: Props) {
     <main>
       <header className="battle-header">
         <div>
-          <h1>
+          <h1 aria-live="polite">
             {gameOver
               ? snapshot.phase.winner === snapshot.you.id
                 ? 'You won'

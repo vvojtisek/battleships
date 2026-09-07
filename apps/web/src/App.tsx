@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router';
 import { Battle } from './components/Battle.js';
 import { FleetPlacement } from './components/FleetPlacement.js';
@@ -24,6 +24,25 @@ function Landing() {
 function Play() {
   const transport = useMemo(() => new LocalTransport(), []);
   const { snapshot, difficulty, error, setDifficulty, receive, fail, connect } = useGame();
+  const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('theme');
+      return saved === 'light' || saved === 'dark' ? saved : 'system';
+    } catch {
+      return 'system';
+    }
+  });
+
+  useEffect(() => {
+    if (theme === 'system') delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = theme;
+    try {
+      if (theme === 'system') localStorage.removeItem('theme');
+      else localStorage.setItem('theme', theme);
+    } catch {
+      // Theme preference is a convenience; private browsing can reject persistence.
+    }
+  }, [theme]);
 
   useEffect(() => {
     connect((command) => transport.send(command));
@@ -57,7 +76,7 @@ function Play() {
     <>
       <nav>
         <Link to="/">Battleships</Link>
-        <label>
+        <label className="difficulty-control">
           Difficulty{' '}
           <select
             value={difficulty}
@@ -68,6 +87,18 @@ function Play() {
             <option value="hard">Hard</option>
           </select>
         </label>
+        <div aria-label="Color theme" className="theme-control" role="group">
+          {(['system', 'light', 'dark'] as const).map((choice) => (
+            <button
+              aria-pressed={theme === choice}
+              key={choice}
+              onClick={() => setTheme(choice)}
+              type="button"
+            >
+              {choice}
+            </button>
+          ))}
+        </div>
       </nav>
       {error && (
         <p className="error" role="alert">

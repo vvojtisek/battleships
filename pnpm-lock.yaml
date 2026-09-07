@@ -61,6 +61,9 @@ importers:
       '@bs/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@bs/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       react:
         specifier: ^19.1.1
         version: 19.2.8
