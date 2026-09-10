@@ -15,6 +15,20 @@ gates with `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, and `pnpm -r bui
 The engine additionally provides `pnpm --filter @bs/engine play` for a headless game
 and `pnpm --filter @bs/engine bench` for the 10,000-game-per-tier AI regression gate.
 
+### Private LAN test
+
+The project is intentionally configured for private-network testing only. On this PC,
+copy `.env.example` to `.env`, then start the server and web app in separate terminals:
+
+```bash
+set -a; source .env; set +a; pnpm --filter @bs/server start
+set -a; source .env; set +a; pnpm --filter @bs/web dev
+```
+
+With this PC at `192.168.0.211`, open `http://192.168.0.211:4173` from another device on
+`192.168.0.0/24`. Keep the router/firewall scoped to that subnet; neither service should
+be port-forwarded or exposed to the public internet.
+
 ## The plan
 
 | # | Document | Contents |
