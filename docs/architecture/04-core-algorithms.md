@@ -114,9 +114,9 @@ export function randomFleet(rng: Rng, rules: RuleSet): Ship[] {
 }
 ```
 
-Longest-ship-first ordering makes dead ends vanishingly rare (with
-`shipsMayTouch: true` the first attempt succeeds essentially always; with the no-touch
-variant, restarts occur in single-digit percentages).
+Longest-ship-first ordering makes dead ends vanishingly rare. The product default uses
+`shipsMayTouch: false`; the touching-ships variant succeeds essentially always, while the
+no-touch default only needs occasional retries.
 
 > **Honest caveat:** this samples *uniformly at each step*, which is **not** uniform over
 > the space of legal fleets — it slightly over-represents configurations reachable by

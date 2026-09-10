@@ -1,6 +1,9 @@
 # Battleship — Technical Implementation & Architecture Plan
 
-Status: **Proposed** · Version: 1.0 · Target repo: `vvojtisek/battleships`
+Status: **In implementation** · Version: 1.1 · Target repo: `vvojtisek/battleships`
+
+Deployment decision: multiplayer is private-home-LAN only (`192.168.0.0/24`), hosted on one
+machine. Public hosting, Fly.io, Cloudflare, Redis, and port forwarding are out of scope.
 
 This directory is the authoritative implementation plan for a browser-based Battleship
 game with single-player (AI) and real-time two-player modes, built to an Apple
@@ -50,8 +53,8 @@ Everything else follows from that:
 | ADR-04 | Animation | Motion (`motion`) for layout, CSS/WAAPI for the 100-cell grid | Motion everywhere, GSAP | 100 `<motion.div>` cells is a measurable main-thread cost for zero benefit |
 | ADR-05 | Backend language | Node 22 + TypeScript | Go, Python/FastAPI | Sharing `@bs/engine` verbatim beats raw throughput at this workload (~2 KB/s per room) |
 | ADR-06 | Transport | Raw `ws` + typed envelope | Socket.io | We need resumable, sequence-numbered, at-least-once delivery. Socket.io does not provide that; its rooms/fallbacks are overhead we do not use |
-| ADR-07 | State store | In-process `Map`, Redis as directory + pub/sub only | Redis as primary store | Read-modify-write on shared Redis reintroduces the races that single-writer eliminates |
-| ADR-08 | Hosting (server) | Fly.io, long-lived Node containers | Vercel/Lambda; Cloudflare Durable Objects | Serverless is disqualified for long-lived sockets. Durable Objects are arguably a *better* fit — see the honest comparison in [§1.4](./01-tech-stack.md#14-deployment-topology) |
+| ADR-07 | State store | In-process `Map` on one LAN host | Redis | A single local server needs no directory or distributed coordination; restarting it ends active rooms |
+| ADR-08 | Hosting (server) | Private home-LAN Node host | Public cloud, serverless, Cloudflare Durable Objects | The game is intentionally reachable only from the two home subnets, with no public ingress |
 | ADR-09 | Chat | Fixed emote set, no free text | Free-text chat | Removes the entire moderation and XSS surface for near-zero UX loss |
 
 ## Repository layout

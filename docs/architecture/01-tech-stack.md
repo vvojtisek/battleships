@@ -232,44 +232,13 @@ and SSE has a per-domain connection cap under HTTP/1.1.
 
 | Component | Target | Notes |
 |---|---|---|
-| `apps/web` | Cloudflare Pages (static) | Immutable hashed assets, `Cache-Control: max-age=31536000`; `index.html` `no-cache` |
-| `/room/:code` OG shell | Cloudflare Worker | ~30 lines, returns meta tags then the SPA shell |
-| `apps/server` | Fly.io, ≥2 machines, `min_machines_running = 1` | Regions `iad` + `fra`; players join the region of the room creator |
-| Redis | Upstash or Fly Redis | Room directory + resume tokens only. **Not** game state |
+| `apps/web` | Vite dev server during development; static build on the home server later | Bind only to the LAN address |
+| `apps/server` | One Node process on the home-LAN PC/server | `HOST=0.0.0.0`, with `ALLOWED_ORIGINS` limited to the LAN web address |
+| State | In-process room registry | No Redis, no multi-instance routing, no public ingress |
 
-**Why Fly.io:** long-lived processes with WebSocket support, per-region placement,
-`fly-replay` header for routing a request to a specific machine (which is exactly the
-sticky-routing primitive ADR-07 needs), and a plain Docker image so local `docker
-compose` reproduces production.
-
-**Serverless is disqualified**, not merely suboptimal: Vercel/Netlify/Lambda function
-invocations have execution ceilings and no cross-invocation memory, so an authoritative
-in-memory room cannot survive between two shots.
-
-### The honest alternative: Cloudflare Durable Objects
-
-Durable Objects are, on the merits, a *better architectural fit* than what we chose. A
-DO is a single-threaded, globally-unique actor addressed by name — meaning
-`env.ROOM.idFromName(roomCode)` gives you the single-writer guarantee that ADR-07
-otherwise achieves with a Redis directory plus sticky routing. WebSocket Hibernation
-lets an idle room cost nothing while keeping sockets open. It would delete Redis, the
-directory, and the routing layer from this design entirely.
-
-We chose Fly.io anyway, for reasons that are about this project rather than about the
-technology:
-
-1. **Portability.** The DO version binds the server to one vendor's runtime. The Node
-   version runs anywhere, including a laptop, which matters for a public repo people
-   may want to self-host.
-2. **Debuggability.** `node --inspect`, heap snapshots, and ordinary profilers work.
-   Workers tooling (`wrangler`, Miniflare) is good and improving but is a different
-   debugging model.
-3. **The port is cheap.** `RoomActor` (§2.2) is deliberately transport- and
-   storage-agnostic; moving it into a DO is roughly a day's work, because the engine and
-   protocol packages are unchanged.
-
-If cost-at-scale or global latency becomes the dominant constraint, switch. That is a
-migration, not a rewrite — which is the point of keeping the actor boundary clean.
+The router/firewall must keep ports 3000 and 4173 inside `192.168.0.0/24`; do not
+port-forward them. A server restart ends active in-memory rooms, which is acceptable for this
+private-game scope. The engine and protocol remain portable if persistence is ever needed.
 
 ---
 

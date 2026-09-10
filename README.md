@@ -4,8 +4,9 @@ A modern, browser-based Battleship game: single-player against a probability-dri
 and real-time two-player matches over shareable room links, with an Apple
 Human-Interface-Guidelines-inspired interface.
 
-**Status: Phase 2 complete.** The workspace foundation, dependency-free rules engine,
-and offline single-player browser game are implemented. The complete technical plan lives in
+**Status: playable single-player, LAN server foundations, and gameplay polish are implemented.**
+The workspace foundation, dependency-free rules engine, offline browser game, and private-LAN
+WebSocket gateway are in place. The complete technical plan lives in
 [`docs/architecture/`](./docs/architecture/README.md).
 
 ## Development
@@ -57,7 +58,8 @@ ships" impossible rather than merely inconvenient.
 
 Standard 10×10 Battleship. Fleet: Carrier (5), Battleship (4), Cruiser (3),
 Submarine (3), Destroyer (2) — 17 cells total. One shot per turn regardless of outcome.
-Ships may touch (standard Milton Bradley rules); the no-touch variant is a `RuleSet` flag.
+Ships need one clear cell around them, including diagonally. The alternate touching-ships
+variant remains available through the `RuleSet` flag for future room variants.
 
 ## License
 
