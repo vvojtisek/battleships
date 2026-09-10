@@ -96,13 +96,16 @@ keyboard-only playthrough.
 - Reconnect + resume tokens + turn/placement/disconnect timers.
 - Rate limiting, message size caps, origin checks
   ([§7.4](./07-testing-security.md#74-input-and-abuse-hardening)).
-- Redis directory + `fly-replay` routing + debounced snapshots.
+- Single in-memory room registry on the home-LAN server. Redis and multi-instance routing
+  are deliberately deferred: this product runs on one private host, not a public cluster.
+- Bind only to the configured private subnet and allow WebSocket origins only from the LAN web
+  address; do not port-forward either service.
 - The **leak test** ([§7.2](./07-testing-security.md#the-leak-test)) — this phase does
   not ship without it.
 
-**Exit:** two browsers complete a game through a deployed staging server; killing the
-server mid-game and restarting it lets both clients resume; Playwright two-context E2E
-green; leak test green.
+**Exit:** two browsers on the configured home LAN complete a game through the local server;
+the origin allowlist blocks an unapproved browser origin; Playwright two-context E2E and the
+leak test are green. A server restart ends in-memory rooms; persistence is a future LAN feature.
 
 ---
 
@@ -142,11 +145,11 @@ room in three tabs, join a finished room — with no stuck states.
 
 ---
 
-## Phase 7 — Production release (1 day + soak)
+## Phase 7 — Home-server release (1 day + soak)
 
-**Do:** Fly deploy with 2 machines across `iad`/`fra`, Cloudflare Pages for the web app,
-uptime checks on `/healthz`, alerting on error rate and `rooms_active` anomalies.
-Announce, then soak for a week watching metrics before touching anything.
+**Do:** install the server and static web build on the private home network, with local uptime
+checks on `/healthz`, error-rate and `rooms_active` monitoring. Keep the router closed to the
+internet, test from both LAN clients, then soak for a week before changing it.
 
 **Exit:** 7 days at ≥99.5% availability with no P1 incidents.
 

@@ -76,8 +76,8 @@ export interface Ship {
 }
 
 export interface RuleSet {
-  /** Standard Milton Bradley rules ALLOW ships to touch. The "no-touch" halo is the
-   *  Russian/Soviet variant. Default true = standard. */
+  /** Product default uses a one-cell no-touch halo. Set true only for an explicit
+   *  touching-ships room variant. */
   readonly shipsMayTouch: boolean;
   /** Standard tournament play: one shot per turn regardless of outcome. */
   readonly extraTurnOnHit: boolean;
@@ -87,7 +87,7 @@ export interface RuleSet {
 }
 
 export const STANDARD_RULES: RuleSet = {
-  shipsMayTouch: true,
+  shipsMayTouch: false,
   extraTurnOnHit: false,
   turnSeconds: 45,
   placementSeconds: 180,
@@ -260,9 +260,7 @@ export interface GameOverPayload {
 
 | Data | Store | TTL | Loss impact |
 |---|---|---|---|
-| `RoomState` (live) | Process memory | — | Recovered from snapshot |
-| `RoomState` snapshot | Redis `room:{CODE}:snapshot` | 1 h | ≤250 ms of moves |
-| Room directory | Redis `room:{CODE}` | 4 h, refreshed | Room becomes unjoinable; existing sockets unaffected |
+| `RoomState` (live) | Single server process memory | Until server restart | Active room ends; players start a new LAN room |
 | Resume token | Stateless HMAC | 10 min | Player must rejoin as a new seat |
 | Completed game replay | Optional Postgres (Phase 7) | — | Stats/history only |
 

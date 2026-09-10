@@ -20,6 +20,7 @@ body {
       transparent 32rem
     ),
     var(--bg-secondary);
+  color: var(--label-primary);
 }
 
 button,
@@ -40,6 +41,12 @@ button,
     transform 140ms ease,
     background 140ms ease,
     box-shadow 140ms ease;
+}
+.secondary-link {
+  width: fit-content;
+  margin-top: 0.75rem;
+  color: var(--label);
+  font-weight: 600;
 }
 
 button:hover:not(:disabled),
@@ -91,6 +98,14 @@ select {
   color: var(--label);
   padding: 0.4rem;
 }
+input {
+  min-height: 44px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: var(--fill-secondary);
+  color: var(--label);
+  padding: 0.45rem 0.65rem;
+}
 
 .theme-control {
   display: inline-flex;
@@ -109,6 +124,66 @@ select {
 .theme-control button[aria-pressed='true'] {
   background: var(--bg-primary);
   box-shadow: 0 1px 3px rgb(0 0 0 / 15%);
+}
+.appearance-control {
+  position: relative;
+}
+.appearance-control summary {
+  min-height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
+  background: var(--fill-secondary);
+  color: var(--label);
+  cursor: pointer;
+  font-size: var(--caption);
+  font-weight: 600;
+  list-style: none;
+}
+.appearance-control summary::-webkit-details-marker {
+  display: none;
+}
+.appearance-control[open] summary {
+  border-color: var(--blue);
+}
+.appearance-control > div {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.5rem);
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.65rem;
+  min-width: 13rem;
+  padding: 0.75rem;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  background: var(--material-thick);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(var(--material-blur));
+}
+.appearance-control label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--label-secondary);
+  font-size: var(--caption);
+}
+.appearance-control input[type='color'] {
+  width: 100%;
+  height: 2rem;
+  padding: 0.15rem;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: var(--fill-secondary);
+  cursor: pointer;
+}
+.appearance-control button {
+  grid-column: span 2;
+  min-height: 32px;
+  padding: 0.25rem 0.55rem;
+  font-size: var(--caption);
 }
 
 main {
@@ -177,6 +252,40 @@ main {
   gap: 0.5rem;
   margin: 1rem 0;
 }
+.ship-dock {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0;
+}
+.ship-dock button {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(7rem, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  text-transform: capitalize;
+}
+.ship-dock small,
+.ship-dock strong {
+  color: var(--label-secondary);
+  font-size: var(--caption);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.dock-ship {
+  display: block;
+  width: calc(var(--length) * 1.15rem);
+  max-width: 100%;
+  height: 0.8rem;
+  border: 2px solid var(--ship-ink);
+  border-radius: var(--radius-pill);
+  background: var(--ship-fill);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ship-ink) 16%, transparent);
+}
+.ship-dock .selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--blue) inset;
+}
 .fleet-list button {
   text-align: left;
   text-transform: capitalize;
@@ -195,39 +304,89 @@ main {
   border: 1px solid var(--separator);
   border-radius: var(--radius-lg);
   padding: 0.7rem;
-  background: var(--material-thin);
+  background: var(--material-thick);
   box-shadow: 0 8px 24px rgb(0 0 0 / 5%);
 }
 .column-labels {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
+  grid-template-columns: 1.35rem repeat(10, 1fr);
   margin: 0 0 0.35rem;
-  color: var(--label-secondary);
+  color: var(--label-primary);
   font-size: var(--caption);
+  font-weight: 700;
   text-align: center;
 }
+.board-body {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: stretch;
+}
+.row-labels {
+  display: grid;
+  grid-template-rows: repeat(10, 1fr);
+  color: var(--label-primary);
+  font-size: var(--caption);
+  font-weight: 700;
+  text-align: center;
+}
+.row-labels span {
+  display: grid;
+  place-items: center;
+}
 .board {
+  position: relative;
   aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  gap: 2px;
+  gap: 0;
+  overflow: hidden;
+  background: var(--board-water);
+  border: 1px solid var(--board-grid);
+  border-radius: var(--radius-cell);
+}
+.board::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  content: '';
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(10% - 1px),
+      var(--board-grid) calc(10% - 1px) 10%
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 calc(10% - 1px),
+      var(--board-grid) calc(10% - 1px) 10%
+    );
 }
 .cell {
   position: relative;
+  z-index: 0;
   min-width: 0;
   min-height: 0;
   aspect-ratio: 1;
   padding: 0;
   border: 0;
-  border-radius: 4px;
-  background: var(--fill-tertiary);
+  border-radius: 0;
+  background: transparent;
 }
 .cell:hover:not(:disabled),
 .cell:focus-visible {
-  background: color-mix(in srgb, var(--blue) 28%, var(--fill-tertiary));
+  background: color-mix(in srgb, var(--blue) 34%, var(--board-water));
 }
 .cell.ship {
-  background: var(--label-secondary);
+  background: var(--ship-fill);
+  color: var(--ship-ink);
+}
+.cell.preview-valid {
+  background: color-mix(in srgb, var(--green) 48%, var(--board-water));
+}
+.cell.preview-invalid {
+  background: color-mix(in srgb, var(--red) 52%, var(--board-water));
 }
 .cell.miss {
   background: var(--fill-secondary);
@@ -236,7 +395,7 @@ main {
   width: 28%;
   height: 28%;
   border-radius: 50%;
-  background: var(--label-secondary);
+  background: var(--label-primary);
 }
 .cell.hit {
   background: color-mix(in srgb, var(--red) 18%, var(--fill-tertiary));
@@ -270,6 +429,27 @@ main {
 .battle-header p {
   color: var(--label-secondary);
 }
+.battle-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.6rem;
+  margin: 0 0 1.5rem;
+}
+.battle-stats div {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-md);
+  background: var(--fill-secondary);
+}
+.battle-stats span {
+  color: var(--label-secondary);
+  font-size: var(--caption);
+}
+.battle-stats strong {
+  font-variant-numeric: tabular-nums;
+}
 .error {
   width: min(1120px, 92vw);
   margin: 1rem auto;
@@ -278,6 +458,55 @@ main {
   border-radius: var(--radius-md);
   color: var(--red);
   background: color-mix(in srgb, var(--red) 10%, var(--bg-primary));
+}
+.room-home {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 34rem;
+}
+.room-home h1 {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.25rem);
+  letter-spacing: -0.045em;
+}
+.room-home > p:not(.eyebrow):not(.error) {
+  margin: 0;
+  color: var(--label-secondary);
+  line-height: 1.5;
+}
+.room-home label,
+.join-form label,
+.room-actions label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--label-secondary);
+  font-size: var(--caption);
+  font-weight: 600;
+}
+.room-actions,
+.join-form {
+  display: grid;
+  grid-template-columns: auto minmax(8rem, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
+}
+.join-form {
+  grid-template-columns: minmax(8rem, 1fr) auto;
+}
+.room-code,
+.connection-status {
+  color: var(--label-secondary);
+  font-size: var(--caption);
+  font-weight: 600;
+}
+.room-code-large {
+  width: fit-content;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-md);
+  color: var(--label-primary);
+  font-size: var(--title);
+  letter-spacing: 0.12em;
 }
 
 @media (max-width: 1023px) {
@@ -295,11 +524,27 @@ main {
     width: 100%;
     justify-content: space-between;
   }
+  .appearance-control {
+    margin-left: auto;
+  }
   .battle-header {
     align-items: flex-start;
     flex-direction: column;
   }
+  .battle-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .room-actions,
+  .join-form {
+    grid-template-columns: 1fr;
+  }
   .board-wrap {
     padding: 0.45rem;
+  }
+  .column-labels {
+    grid-template-columns: 1.1rem repeat(10, 1fr);
+  }
+  .board-body {
+    grid-template-columns: 1.1rem minmax(0, 1fr);
   }
 }

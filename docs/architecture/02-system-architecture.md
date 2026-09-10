@@ -14,27 +14,15 @@ flowchart LR
     W --- ENG1
   end
 
-  subgraph Edge
-    CDN[Cloudflare Pages + OG Worker]
-  end
-
-  subgraph "Fly.io region"
-    LB[Fly proxy / fly-replay]
-    S1["Server instance A<br/>Map&lt;roomId, RoomActor&gt;"]
-    S2["Server instance B<br/>Map&lt;roomId, RoomActor&gt;"]
+  subgraph "Private home LAN (192.168.0.0/24)"
+    WEB[Vite/static web host]
+    S1["Single Node server<br/>Map&lt;roomId, RoomActor&gt;"]
     ENG2["@bs/engine"]
+    WEB --> S1
     S1 --- ENG2
-    S2 --- ENG2
   end
 
-  R[(Redis<br/>directory + resume tokens)]
-
-  UI -->|HTTPS| CDN
-  Z <-->|wss: envelopes| LB
-  LB --> S1
-  LB --> S2
-  S1 <--> R
-  S2 <--> R
+  Z <-->|ws: envelopes| S1
 ```
 
 **Single-player never touches the right-hand side of this diagram.** Selecting
@@ -98,35 +86,15 @@ Properties this buys:
 - **One audit point.** `reduce` is pure and `project` is the only serializer. Both are
   exhaustively tested in isolation.
 
-## 2.3 Room ownership and routing — ADR-07
+## 2.3 Room ownership — ADR-07
 
-Game state lives in process memory. To find the process that owns a room:
+Game state lives in the single LAN server process. `POST /api/rooms` creates an actor in its
+in-process registry and returns the room code; joining clients connect directly to that same
+server. There is no directory, proxy, Redis, or cross-instance protocol.
 
-```
-Redis: room:{CODE} -> { instanceId, region, createdAt, phase }   TTL 4h, refreshed on activity
-```
-
-1. `POST /api/rooms` → the receiving instance generates a code, writes the directory
-   key with `SET NX`, creates the actor locally, returns `{ code, wsUrl, playerToken }`.
-2. A joining client opens `wss://host/ws?room=CODE`. The receiving instance reads the
-   directory. If the owner is another machine, it responds with Fly's
-   `fly-replay: instance=<id>` header **during the HTTP upgrade** (before the socket is
-   established), and the Fly proxy re-routes to the owner. No proxying of frames, no
-   cross-instance pub/sub in the hot path.
-3. Redis Pub/Sub is used only for control-plane messages (`room.closed`,
-   `instance.draining`) and to reclaim orphaned directory entries.
-
-**Why not Redis as the primary store:** every shot would become
-`WATCH/GET/parse/reduce/serialize/MULTI/SET` — a distributed read-modify-write with
-retry loops, re-introducing exactly the races the actor model removes, and adding two
-network round trips to a move that is currently a bitwise AND. Redis is a directory
-and a crash-recovery snapshot sink, nothing more.
-
-**Crash recovery:** the actor writes a debounced (250 ms) snapshot of `RoomState` to
-`room:{CODE}:snapshot` (TTL 1 h). If an instance dies, the next join rehydrates the room
-from the snapshot. Worst case a player loses ≤250 ms of moves and the client's resume
-handshake resolves the divergence via a full snapshot. This is deliberately weak
-durability: a lost Battleship game is not worth an fsync path.
+Active rooms end if that server restarts. This is an intentional tradeoff for a private home
+game; the pure engine and room actor can later gain a local persistence adapter without changing
+the rules or browser protocol.
 
 ## 2.4 Transport abstraction
 

@@ -34,7 +34,7 @@ export interface RuleSet {
 }
 
 export const STANDARD_RULES: RuleSet = {
-  shipsMayTouch: true,
+  shipsMayTouch: false,
   extraTurnOnHit: false,
   turnSeconds: 45,
   placementSeconds: 180,

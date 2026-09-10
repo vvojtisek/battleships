@@ -23,6 +23,7 @@ export default tseslint.config(
           './packages/*/tsconfig.json',
           './packages/engine/tsconfig.test.json',
           './packages/protocol/tsconfig.test.json',
+          './apps/server/tsconfig.test.json',
           './tsconfig.tooling.json',
         ],
         tsconfigRootDir: import.meta.dirname,
@@ -49,6 +50,24 @@ export default tseslint.config(
       '@typescript-eslint/no-confusing-void-expression': 'off',
       '@typescript-eslint/prefer-optional-chain': 'off',
       '@typescript-eslint/unbound-method': 'off',
+    },
+  },
+  {
+    files: ['apps/server/src/http/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-confusing-void-expression': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
+  {
+    files: ['apps/server/test/websocket.test.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
     },
   },
   {

@@ -4,8 +4,9 @@ A modern, browser-based Battleship game: single-player against a probability-dri
 and real-time two-player matches over shareable room links, with an Apple
 Human-Interface-Guidelines-inspired interface.
 
-**Status: Phase 2 complete.** The workspace foundation, dependency-free rules engine,
-and offline single-player browser game are implemented. The complete technical plan lives in
+**Status: playable single-player, LAN server foundations, and gameplay polish are implemented.**
+The workspace foundation, dependency-free rules engine, offline browser game, and private-LAN
+WebSocket gateway are in place. The complete technical plan lives in
 [`docs/architecture/`](./docs/architecture/README.md).
 
 ## Development
@@ -14,6 +15,24 @@ Requires Node.js 22+ and pnpm 11. Install with `pnpm install`, then run the stan
 gates with `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, and `pnpm -r build`.
 The engine additionally provides `pnpm --filter @bs/engine play` for a headless game
 and `pnpm --filter @bs/engine bench` for the 10,000-game-per-tier AI regression gate.
+
+### Private LAN test
+
+The project is intentionally configured for private-network testing only. On this PC,
+copy `.env.example` to `.env`, then start the server and web app in separate terminals:
+
+```bash
+set -a; source .env; set +a; pnpm --filter @bs/server start
+set -a; source .env; set +a; pnpm --filter @bs/web dev
+```
+
+With this PC at `192.168.0.211`, open `http://192.168.0.211:4173` from another device on
+`192.168.0.0/24`. Keep the router/firewall scoped to that subnet; neither service should
+be port-forwarded or exposed to the public internet.
+
+For a LAN game, open `/multiplayer`, create a room, and give the six-character room code to
+the other player. The other device opens the same page, enters its name and the code, then both
+players place and confirm their fleets.
 
 ## The plan
 
@@ -43,7 +62,8 @@ ships" impossible rather than merely inconvenient.
 
 Standard 10×10 Battleship. Fleet: Carrier (5), Battleship (4), Cruiser (3),
 Submarine (3), Destroyer (2) — 17 cells total. One shot per turn regardless of outcome.
-Ships may touch (standard Milton Bradley rules); the no-touch variant is a `RuleSet` flag.
+Ships need one clear cell around them, including diagonally. The alternate touching-ships
+variant remains available through the `RuleSet` flag for future room variants.
 
 ## License
 

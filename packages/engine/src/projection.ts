@@ -12,6 +12,7 @@ export interface OwnShip {
 }
 
 export interface ProjectedRoomState {
+  readonly matchId: string;
   readonly code: string;
   readonly rules: RuleSet;
   readonly phase: Phase;
@@ -75,6 +76,7 @@ export function projectRoom(
         sunk: [],
       };
   const base: ProjectedRoomState = {
+    matchId: state.id,
     code: state.code,
     rules: state.rules,
     phase: state.phase,

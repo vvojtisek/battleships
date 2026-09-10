@@ -84,7 +84,7 @@ function newGame(level: Difficulty): void {
   difficulty = level;
   if (timer) clearTimeout(timer);
   state = createRoom({
-    id: roomId('local-room'),
+    id: roomId(`local-${Date.now()}-${Math.random().toString(36).slice(2)}`),
     code: 'LOCAL1',
     creator: human,
     displayName: 'You',

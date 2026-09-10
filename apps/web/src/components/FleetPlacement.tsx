@@ -1,79 +1,123 @@
-import { FLEET_SPEC, type Cell, type Direction, type ShipKind } from '@bs/engine';
-import { useState } from 'react';
+import {
+  FLEET_SPEC,
+  isLegalPlacement,
+  makeShip,
+  shipLength,
+  type Cell,
+  type Direction,
+  type ShipKind,
+} from '@bs/engine';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Board } from './Board.js';
-import type { WorkerCommand } from '../game/messages.js';
+import type { PlayerCommand } from '../game/messages.js';
 import type { ProjectedRoomState } from '@bs/engine';
 
 interface Props {
   readonly snapshot: ProjectedRoomState;
-  readonly send: (command: WorkerCommand) => void;
+  readonly send: (command: PlayerCommand) => void;
 }
 
 export function FleetPlacement({ snapshot, send }: Props) {
   const [selected, setSelected] = useState<ShipKind>('carrier');
   const [direction, setDirection] = useState<Direction>('H');
+  const [previewCell, setPreviewCell] = useState<Cell | null>(null);
   const placed = new Set(snapshot.you.ships.map(({ kind }) => kind));
   const fleet = snapshot.you.ships.reduce(
     (mask, ship) => ship.cells.reduce((value, cell) => value | (1n << BigInt(cell)), mask),
     0n,
   );
+  const selectedShip = snapshot.you.ships.find(({ kind }) => kind === selected);
+  const occupancyWithoutSelected = selectedShip
+    ? fleet & ~selectedShip.cells.reduce((mask, cell) => mask | (1n << BigInt(cell)), 0n)
+    : fleet;
+  const previewShip = previewCell === null ? null : makeShip(selected, previewCell, direction);
+  const previewIsLegal =
+    previewShip !== null &&
+    previewCell !== null &&
+    isLegalPlacement(
+      occupancyWithoutSelected,
+      shipLength(selected),
+      previewCell,
+      direction === 'V' ? 1 : 0,
+      snapshot.rules,
+    );
+
+  useEffect(() => {
+    const next = FLEET_SPEC.find(({ kind }) => !placed.has(kind))?.kind;
+    if (next) setSelected(next);
+  }, [snapshot.you.ships]);
 
   function place(cell: Cell, kind = selected): void {
-    send({
-      type: 'game.command',
-      command: { type: 'fleet.place', shipKind: kind, bow: cell, dir: direction },
-    });
+    send({ type: 'fleet.place', shipKind: kind, bow: cell, dir: direction });
+    setPreviewCell(null);
   }
 
   return (
     <main className="game-layout">
       <section className="panel controls">
-        <h1>Place your fleet</h1>
+        <h1>Ready your fleet</h1>
         <p>
-          Select or drag a ship, then choose its bow cell. Arrow keys move across the board; Enter
-          places. Press R to rotate.
+          {snapshot.you.committed
+            ? snapshot.opponent.committed
+              ? 'Both fleets are confirmed. Starting battle…'
+              : 'Your fleet is confirmed. Waiting for the other player.'
+            : 'Drag a ship from the dock or select it, then choose its bow cell. Ships need one clear cell around them, including diagonally.'}
         </p>
-        <div className="fleet-list">
+        <div aria-label="Ship dock" className="ship-dock">
           {FLEET_SPEC.map((ship) => (
             <button
               aria-pressed={selected === ship.kind}
               className={selected === ship.kind ? 'selected' : ''}
+              disabled={snapshot.you.committed}
               draggable
               key={ship.kind}
               onClick={() => setSelected(ship.kind)}
-              onDragStart={(event) =>
-                event.dataTransfer.setData('application/x-battleship-kind', ship.kind)
-              }
+              onDragStart={(event) => {
+                setSelected(ship.kind);
+                event.dataTransfer.setData('application/x-battleship-kind', ship.kind);
+              }}
               type="button"
             >
-              {ship.kind} ({ship.length}) {placed.has(ship.kind) ? '✓' : ''}
+              <span
+                aria-hidden="true"
+                className="dock-ship"
+                style={{ '--length': ship.length } as CSSProperties}
+              />
+              <span>
+                {ship.kind} <small>{ship.length} cells</small>
+              </span>
+              <strong>{placed.has(ship.kind) ? 'On board' : 'Ready'}</strong>
             </button>
           ))}
         </div>
         <div className="button-row">
-          <button onClick={() => setDirection(direction === 'H' ? 'V' : 'H')} type="button">
-            Rotate ({direction})
-          </button>
           <button
-            onClick={() => send({ type: 'game.command', command: { type: 'fleet.random' } })}
+            disabled={snapshot.you.committed}
+            onClick={() => setDirection(direction === 'H' ? 'V' : 'H')}
             type="button"
           >
-            Randomize
+            Rotate ship ({direction})
           </button>
           <button
-            onClick={() => send({ type: 'game.command', command: { type: 'fleet.clear' } })}
+            disabled={snapshot.you.committed}
+            onClick={() => send({ type: 'fleet.random' })}
             type="button"
           >
-            Clear
+            Randomize fleet
           </button>
           <button
-            disabled={placed.size !== 5}
-            onClick={() =>
-              send({ type: 'game.command', command: { type: 'fleet.commit', at: Date.now() } })
-            }
+            disabled={snapshot.you.committed}
+            onClick={() => send({ type: 'fleet.clear' })}
             type="button"
           >
-            Ready
+            Return all
+          </button>
+          <button
+            disabled={placed.size !== 5 || snapshot.you.committed}
+            onClick={() => send({ type: 'fleet.commit', at: Date.now() })}
+            type="button"
+          >
+            {snapshot.you.committed ? 'Fleet confirmed' : 'Start battle'}
           </button>
         </div>
       </section>
@@ -87,8 +131,12 @@ export function FleetPlacement({ snapshot, send }: Props) {
           fleet={fleet}
           shots={0n}
           hits={0n}
+          disabled={snapshot.you.committed}
           onCell={place}
+          onPreviewCell={setPreviewCell}
           onDropShip={(cell, kind) => place(cell, kind as ShipKind)}
+          preview={previewShip?.mask ?? 0n}
+          previewState={previewIsLegal ? 'valid' : 'invalid'}
         />
       </div>
     </main>
