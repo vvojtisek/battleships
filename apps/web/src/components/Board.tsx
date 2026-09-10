@@ -7,7 +7,10 @@ interface BoardProps {
   readonly shots: BitBoard;
   readonly hits: BitBoard;
   readonly disabled?: boolean;
+  readonly preview?: BitBoard;
+  readonly previewState?: 'valid' | 'invalid';
   readonly onCell?: (cell: Cell) => void;
+  readonly onPreviewCell?: (cell: Cell) => void;
   readonly onDropShip?: (cell: Cell, shipKind: string) => void;
 }
 
@@ -17,7 +20,10 @@ export function Board({
   shots,
   hits,
   disabled = false,
+  preview = 0n,
+  previewState = 'valid',
   onCell,
+  onPreviewCell,
   onDropShip,
 }: BoardProps) {
   function moveFocus(event: KeyboardEvent<HTMLButtonElement>, cell: number): void {
@@ -61,11 +67,13 @@ export function Board({
             const wasShot = has(shots, cell);
             const wasHit = has(hits, cell);
             const occupied = has(fleet, cell);
+            const previewed = has(preview, cell);
             const state = wasHit ? 'hit' : wasShot ? 'miss' : occupied ? 'ship' : 'unknown';
             const className = [
               'cell',
               occupied ? 'ship' : '',
               wasShot ? (wasHit ? 'hit' : 'miss') : '',
+              previewed ? `preview-${previewState}` : '',
             ]
               .filter(Boolean)
               .join(' ');
@@ -79,6 +87,7 @@ export function Board({
                 disabled={disabled || wasShot}
                 key={index}
                 onClick={() => onCell?.(cell)}
+                onFocus={() => onPreviewCell?.(cell)}
                 onDragOver={(event) => {
                   if (onDropShip) event.preventDefault();
                 }}
@@ -87,6 +96,7 @@ export function Board({
                   if (kind) onDropShip?.(cell, kind);
                 }}
                 onKeyDown={(event) => moveFocus(event, index)}
+                onPointerEnter={() => onPreviewCell?.(cell)}
                 type="button"
               >
                 <span aria-hidden="true" />

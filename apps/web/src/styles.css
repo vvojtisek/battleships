@@ -178,6 +178,40 @@ main {
   gap: 0.5rem;
   margin: 1rem 0;
 }
+.ship-dock {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0;
+}
+.ship-dock button {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(7rem, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+  text-transform: capitalize;
+}
+.ship-dock small,
+.ship-dock strong {
+  color: var(--label-secondary);
+  font-size: var(--caption);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.dock-ship {
+  display: block;
+  width: calc(var(--length) * 1.15rem);
+  max-width: 100%;
+  height: 0.8rem;
+  border: 2px solid var(--ship-ink);
+  border-radius: var(--radius-pill);
+  background: var(--ship-fill);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ship-ink) 16%, transparent);
+}
+.ship-dock .selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px var(--blue) inset;
+}
 .fleet-list button {
   text-align: left;
   text-transform: capitalize;
@@ -253,6 +287,12 @@ main {
 .cell.ship {
   background: var(--ship-fill);
   color: var(--ship-ink);
+}
+.cell.preview-valid {
+  background: color-mix(in srgb, var(--green) 48%, var(--board-water));
+}
+.cell.preview-invalid {
+  background: color-mix(in srgb, var(--red) 52%, var(--board-water));
 }
 .cell.miss {
   background: var(--fill-secondary);
