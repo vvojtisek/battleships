@@ -11,6 +11,10 @@ describe('ClientEnvelopeSchema', () => {
     ).toBe(true);
   });
 
+  it.each(['fleet.random', 'fleet.clear'])('accepts the fleet utility command %s', (type) => {
+    expect(ClientEnvelopeSchema.safeParse({ v: 1, cmdId, type, payload: {} }).success).toBe(true);
+  });
+
   it.each([
     { v: 1, cmdId, type: 'turn.fire', payload: { cell: 100 } },
     { v: 1, cmdId, type: 'turn.fire', payload: { cell: 5, playerId: 'victim' } },

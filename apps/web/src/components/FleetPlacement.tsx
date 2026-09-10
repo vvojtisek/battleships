@@ -9,12 +9,12 @@ import {
 } from '@bs/engine';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Board } from './Board.js';
-import type { WorkerCommand } from '../game/messages.js';
+import type { PlayerCommand } from '../game/messages.js';
 import type { ProjectedRoomState } from '@bs/engine';
 
 interface Props {
   readonly snapshot: ProjectedRoomState;
-  readonly send: (command: WorkerCommand) => void;
+  readonly send: (command: PlayerCommand) => void;
 }
 
 export function FleetPlacement({ snapshot, send }: Props) {
@@ -48,10 +48,7 @@ export function FleetPlacement({ snapshot, send }: Props) {
   }, [snapshot.you.ships]);
 
   function place(cell: Cell, kind = selected): void {
-    send({
-      type: 'game.command',
-      command: { type: 'fleet.place', shipKind: kind, bow: cell, dir: direction },
-    });
+    send({ type: 'fleet.place', shipKind: kind, bow: cell, dir: direction });
     setPreviewCell(null);
   }
 
@@ -60,14 +57,18 @@ export function FleetPlacement({ snapshot, send }: Props) {
       <section className="panel controls">
         <h1>Ready your fleet</h1>
         <p>
-          Drag a ship from the dock or select it, then choose its bow cell. Ships need one clear
-          cell around them, including diagonally.
+          {snapshot.you.committed
+            ? snapshot.opponent.committed
+              ? 'Both fleets are confirmed. Starting battle…'
+              : 'Your fleet is confirmed. Waiting for the other player.'
+            : 'Drag a ship from the dock or select it, then choose its bow cell. Ships need one clear cell around them, including diagonally.'}
         </p>
         <div aria-label="Ship dock" className="ship-dock">
           {FLEET_SPEC.map((ship) => (
             <button
               aria-pressed={selected === ship.kind}
               className={selected === ship.kind ? 'selected' : ''}
+              disabled={snapshot.you.committed}
               draggable
               key={ship.kind}
               onClick={() => setSelected(ship.kind)}
@@ -90,29 +91,33 @@ export function FleetPlacement({ snapshot, send }: Props) {
           ))}
         </div>
         <div className="button-row">
-          <button onClick={() => setDirection(direction === 'H' ? 'V' : 'H')} type="button">
+          <button
+            disabled={snapshot.you.committed}
+            onClick={() => setDirection(direction === 'H' ? 'V' : 'H')}
+            type="button"
+          >
             Rotate ship ({direction})
           </button>
           <button
-            onClick={() => send({ type: 'game.command', command: { type: 'fleet.random' } })}
+            disabled={snapshot.you.committed}
+            onClick={() => send({ type: 'fleet.random' })}
             type="button"
           >
             Randomize fleet
           </button>
           <button
-            onClick={() => send({ type: 'game.command', command: { type: 'fleet.clear' } })}
+            disabled={snapshot.you.committed}
+            onClick={() => send({ type: 'fleet.clear' })}
             type="button"
           >
             Return all
           </button>
           <button
-            disabled={placed.size !== 5}
-            onClick={() =>
-              send({ type: 'game.command', command: { type: 'fleet.commit', at: Date.now() } })
-            }
+            disabled={placed.size !== 5 || snapshot.you.committed}
+            onClick={() => send({ type: 'fleet.commit', at: Date.now() })}
             type="button"
           >
-            Start battle
+            {snapshot.you.committed ? 'Fleet confirmed' : 'Start battle'}
           </button>
         </div>
       </section>
@@ -126,6 +131,7 @@ export function FleetPlacement({ snapshot, send }: Props) {
           fleet={fleet}
           shots={0n}
           hits={0n}
+          disabled={snapshot.you.committed}
           onCell={place}
           onPreviewCell={setPreviewCell}
           onDropShip={(cell, kind) => place(cell, kind as ShipKind)}

@@ -30,6 +30,10 @@ With this PC at `192.168.0.211`, open `http://192.168.0.211:4173` from another d
 `192.168.0.0/24`. Keep the router/firewall scoped to that subnet; neither service should
 be port-forwarded or exposed to the public internet.
 
+For a LAN game, open `/multiplayer`, create a room, and give the six-character room code to
+the other player. The other device opens the same page, enters its name and the code, then both
+players place and confirm their fleets.
+
 ## The plan
 
 | # | Document | Contents |

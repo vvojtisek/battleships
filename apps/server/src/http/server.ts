@@ -47,6 +47,10 @@ function commandFrom(envelope: ClientEnvelope, actor: PlayerId): Command | null 
         bow: envelope.payload.bow as Cell,
         dir: envelope.payload.dir,
       };
+    case 'fleet.random':
+      return { type: 'fleet.random', actor };
+    case 'fleet.clear':
+      return { type: 'fleet.clear', actor };
     case 'fleet.commit':
       return { type: 'fleet.commit', actor, at: Date.now() };
     case 'turn.fire':
@@ -72,6 +76,20 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: MAX_FRAME_BYTES });
   const allowedOrigins = new Set(options.allowedOrigins ?? ['http://localhost:5173']);
+  app.addHook('onRequest', async (request, reply) => {
+    const origin = request.headers.origin;
+    if (origin) {
+      if (!allowedOrigins.has(origin)) {
+        if (request.url !== '/ws') return reply.code(403).send();
+        return;
+      }
+      reply.header('access-control-allow-origin', origin);
+      reply.header('access-control-allow-methods', 'POST, OPTIONS');
+      reply.header('access-control-allow-headers', 'content-type');
+      reply.header('vary', 'Origin');
+    }
+    if (request.method === 'OPTIONS') return reply.code(204).send();
+  });
   await app.register(websocket, {
     options: { maxPayload: MAX_FRAME_BYTES, perMessageDeflate: false },
   });

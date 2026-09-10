@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router';
 import { Battle } from './components/Battle.js';
 import { FleetPlacement } from './components/FleetPlacement.js';
+import { MultiplayerHome, MultiplayerRoom } from './components/Multiplayer.js';
 import { LocalTransport } from './game/LocalTransport.js';
+import type { PlayerCommand } from './game/messages.js';
 import { useGame } from './store/game.js';
 import { emptyScores, recordScore, type Scores } from './game/scores.js';
 
@@ -79,6 +81,9 @@ function Landing() {
       </p>
       <Link className="primary-link" to="/play">
         Play against the computer
+      </Link>
+      <Link className="secondary-link" to="/multiplayer">
+        Play on your home LAN
       </Link>
     </main>
   );
@@ -189,12 +194,13 @@ function Play() {
         <p>Preparing local game…</p>
       </main>
     );
-  const send = (command: Parameters<LocalTransport['send']>[0]): void => transport.send(command);
+  const send = (command: PlayerCommand): void => transport.send({ type: 'game.command', command });
 
   return (
     <>
       <nav>
         <Link to="/">Battleships</Link>
+        <Link to="/multiplayer">Multiplayer</Link>
         <label className="difficulty-control">
           Difficulty{' '}
           <select
@@ -265,22 +271,13 @@ function Play() {
   );
 }
 
-function RoomPlaceholder() {
-  return (
-    <main className="landing">
-      <h1>Multiplayer rooms</h1>
-      <p>Real-time rooms arrive in Phase 4. Single-player is available now.</p>
-      <Link to="/play">Play locally</Link>
-    </main>
-  );
-}
-
 export function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/play" element={<Play />} />
-      <Route path="/room/:code" element={<RoomPlaceholder />} />
+      <Route path="/multiplayer" element={<MultiplayerHome />} />
+      <Route path="/room/:code" element={<MultiplayerRoom />} />
       <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
   );

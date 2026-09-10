@@ -39,6 +39,12 @@ const PlaceSchema = z
     payload: z.object({ shipId: ShipKindSchema, bow: CellSchema, dir: DirectionSchema }).strict(),
   })
   .strict();
+const RandomFleetSchema = z
+  .object({ type: z.literal('fleet.random'), payload: z.object({}).strict() })
+  .strict();
+const ClearFleetSchema = z
+  .object({ type: z.literal('fleet.clear'), payload: z.object({}).strict() })
+  .strict();
 const CommitSchema = z
   .object({
     type: z.literal('fleet.commit'),
@@ -65,6 +71,8 @@ export const ClientCommandSchema = z.discriminatedUnion('type', [
   HelloSchema,
   JoinSchema,
   PlaceSchema,
+  RandomFleetSchema,
+  ClearFleetSchema,
   CommitSchema,
   FireSchema,
   ResignSchema,
@@ -85,6 +93,8 @@ export const ClientEnvelopeSchema = z.discriminatedUnion('type', [
   envelope({ type: z.literal('conn.hello'), payload: HelloSchema.shape.payload }),
   envelope({ type: z.literal('room.join'), payload: JoinSchema.shape.payload }),
   envelope({ type: z.literal('fleet.place'), payload: PlaceSchema.shape.payload }),
+  envelope({ type: z.literal('fleet.random'), payload: RandomFleetSchema.shape.payload }),
+  envelope({ type: z.literal('fleet.clear'), payload: ClearFleetSchema.shape.payload }),
   envelope({ type: z.literal('fleet.commit'), payload: CommitSchema.shape.payload }),
   envelope({ type: z.literal('turn.fire'), payload: FireSchema.shape.payload }),
   envelope({ type: z.literal('player.resign'), payload: ResignSchema.shape.payload }),
