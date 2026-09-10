@@ -1,9 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes } from 'react-router';
 import { Battle } from './components/Battle.js';
 import { FleetPlacement } from './components/FleetPlacement.js';
 import { LocalTransport } from './game/LocalTransport.js';
 import { useGame } from './store/game.js';
+import { emptyScores, recordScore, type Scores } from './game/scores.js';
+
+const SCORES_KEY = 'battleships.scores.v1';
+
+function loadScores(): Scores {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(SCORES_KEY) ?? 'null');
+    if (
+      value &&
+      typeof value === 'object' &&
+      'easy' in value &&
+      'medium' in value &&
+      'hard' in value
+    ) {
+      return value as Scores;
+    }
+  } catch {
+    // Score history is optional and must never block a game.
+  }
+  return emptyScores();
+}
 
 function Landing() {
   return (
@@ -24,6 +45,8 @@ function Landing() {
 function Play() {
   const transport = useMemo(() => new LocalTransport(), []);
   const { snapshot, difficulty, error, setDifficulty, receive, fail, connect } = useGame();
+  const [scores, setScores] = useState<Scores>(loadScores);
+  const recordedMatches = useRef(new Set<string>());
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
     try {
       const saved = localStorage.getItem('theme');
@@ -59,6 +82,26 @@ function Play() {
   useEffect(() => {
     transport.send({ type: 'game.new', difficulty });
   }, [difficulty, transport]);
+
+  useEffect(() => {
+    if (
+      !snapshot ||
+      snapshot.phase.kind !== 'game_over' ||
+      recordedMatches.current.has(snapshot.matchId)
+    )
+      return;
+    recordedMatches.current.add(snapshot.matchId);
+    const won = snapshot.phase.winner === snapshot.you.id;
+    setScores((current) => {
+      const next = recordScore(current, difficulty, won);
+      try {
+        localStorage.setItem(SCORES_KEY, JSON.stringify(next));
+      } catch {
+        /* optional persistence */
+      }
+      return next;
+    });
+  }, [difficulty, snapshot]);
 
   function newGame(): void {
     transport.send({ type: 'game.new', difficulty });
@@ -108,7 +151,13 @@ function Play() {
       {snapshot.phase.kind === 'placing' ? (
         <FleetPlacement snapshot={snapshot} send={send} />
       ) : (
-        <Battle snapshot={snapshot} send={send} onNewGame={newGame} />
+        <Battle
+          difficulty={difficulty}
+          score={scores[difficulty]}
+          snapshot={snapshot}
+          send={send}
+          onNewGame={newGame}
+        />
       )}
     </>
   );

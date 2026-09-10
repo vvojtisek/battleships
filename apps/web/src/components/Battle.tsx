@@ -1,14 +1,18 @@
-import type { Cell, ProjectedRoomState } from '@bs/engine';
+import { popcount, type Cell, type ProjectedRoomState } from '@bs/engine';
 import { Board } from './Board.js';
 import type { WorkerCommand } from '../game/messages.js';
+import type { Difficulty } from '../game/messages.js';
+import type { Score } from '../game/scores.js';
 
 interface Props {
   readonly snapshot: ProjectedRoomState;
   readonly send: (command: WorkerCommand) => void;
   readonly onNewGame: () => void;
+  readonly difficulty: Difficulty;
+  readonly score: Score;
 }
 
-export function Battle({ snapshot, send, onNewGame }: Props) {
+export function Battle({ snapshot, send, onNewGame, difficulty, score }: Props) {
   const ownFleet = snapshot.you.ships.reduce(
     (mask, ship) => ship.cells.reduce((value, cell) => value | (1n << BigInt(cell)), mask),
     0n,
@@ -18,6 +22,10 @@ export function Battle({ snapshot, send, onNewGame }: Props) {
   const opponentHits = BigInt(`0x${snapshot.opponent.shotsHit}`);
   const gameOver = snapshot.phase.kind === 'game_over';
   const yourTurn = snapshot.phase.kind === 'in_game' && snapshot.phase.turn === snapshot.you.id;
+  const shots = popcount(opponentShots);
+  const hits = popcount(opponentHits);
+  const accuracy = shots === 0 ? 0 : Math.round((hits / shots) * 100);
+  const shipsRemaining = 5 - snapshot.opponent.sunk.length;
 
   function fire(cell: Cell): void {
     send({ type: 'game.command', command: { type: 'turn.fire', cell, at: Date.now() } });
@@ -48,6 +56,30 @@ export function Battle({ snapshot, send, onNewGame }: Props) {
           </button>
         )}
       </header>
+      <section aria-label="Battle statistics" className="battle-stats">
+        <div>
+          <span>Shots</span>
+          <strong>{shots}</strong>
+        </div>
+        <div>
+          <span>Hits</span>
+          <strong>{hits}</strong>
+        </div>
+        <div>
+          <span>Accuracy</span>
+          <strong>{accuracy}%</strong>
+        </div>
+        <div>
+          <span>Enemy ships</span>
+          <strong>{shipsRemaining}</strong>
+        </div>
+        <div>
+          <span>{difficulty} record</span>
+          <strong>
+            {score.wins}–{score.losses}
+          </strong>
+        </div>
+      </section>
       <div className="boards">
         <div>
           <h2>Your fleet</h2>
