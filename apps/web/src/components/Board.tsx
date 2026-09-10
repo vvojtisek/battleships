@@ -1,5 +1,5 @@
 import { has, type Board as BitBoard, type Cell } from '@bs/engine';
-import type { KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 
 interface BoardProps {
   readonly label: string;
@@ -26,6 +26,13 @@ export function Board({
   onPreviewCell,
   onDropShip,
 }: BoardProps) {
+  const [focusedCell, setFocusedCell] = useState<number | null>(null);
+  const initialCell = disabled
+    ? null
+    : Array.from({ length: 100 }, (_, index) => index).find((index) => !has(shots, index as Cell));
+  const focusTarget =
+    focusedCell !== null && !has(shots, focusedCell as Cell) ? focusedCell : initialCell;
+
   function moveFocus(event: KeyboardEvent<HTMLButtonElement>, cell: number): void {
     const delta =
       event.key === 'ArrowLeft'
@@ -38,13 +45,20 @@ export function Board({
               ? 10
               : 0;
     if (delta === 0) return;
-    const next = cell + delta;
-    const wraps = (delta === -1 && cell % 10 === 0) || (delta === 1 && cell % 10 === 9);
-    if (next < 0 || next > 99 || wraps) return;
     event.preventDefault();
-    document
-      .querySelector<HTMLButtonElement>(`[data-board="${label}"][data-cell="${next}"]`)
-      ?.focus();
+    const board = event.currentTarget.parentElement;
+    let candidate = cell;
+    for (let steps = 0; steps < 10; steps += 1) {
+      const next = candidate + delta;
+      const wraps = (delta === -1 && candidate % 10 === 0) || (delta === 1 && candidate % 10 === 9);
+      if (next < 0 || next > 99 || wraps) return;
+      candidate = next;
+      const target = board?.querySelector<HTMLButtonElement>(`[data-cell="${candidate}"]`);
+      if (target && !target.disabled) {
+        target.focus();
+        return;
+      }
+    }
   }
 
   return (
@@ -68,6 +82,7 @@ export function Board({
             const wasHit = has(hits, cell);
             const occupied = has(fleet, cell);
             const previewed = has(preview, cell);
+            const interactive = !disabled && !wasShot;
             const state = wasHit ? 'hit' : wasShot ? 'miss' : occupied ? 'ship' : 'unknown';
             const className = [
               'cell',
@@ -87,7 +102,10 @@ export function Board({
                 disabled={disabled || wasShot}
                 key={index}
                 onClick={() => onCell?.(cell)}
-                onFocus={() => onPreviewCell?.(cell)}
+                onFocus={() => {
+                  setFocusedCell(index);
+                  onPreviewCell?.(cell);
+                }}
                 onDragOver={(event) => {
                   if (onDropShip) event.preventDefault();
                 }}
@@ -97,6 +115,7 @@ export function Board({
                 }}
                 onKeyDown={(event) => moveFocus(event, index)}
                 onPointerEnter={() => onPreviewCell?.(cell)}
+                tabIndex={interactive && index === focusTarget ? 0 : -1}
                 type="button"
               >
                 <span aria-hidden="true" />
