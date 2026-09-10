@@ -9,6 +9,7 @@ import {
   easyAi,
   hardAi,
   has,
+  inferredWater,
   makeRng,
   mediumAi,
   targetShot,
@@ -93,6 +94,35 @@ describe('AI players', () => {
     const density = densityMap(knowledge);
     expect(density[miss]).toBe(0);
     expect(hardAi.nextShot(knowledge, makeRng(2))).not.toBe(miss);
+  });
+
+  test.each([easyAi, mediumAi, hardAi])('$id avoids the halo of sunk ships by default', (ai) => {
+    const sunkCells = bit(toCell(4, 4)) | bit(toCell(4, 5));
+    const knowledge: Knowledge = {
+      ...emptyKnowledge(),
+      shots: sunkCells,
+      hits: sunkCells,
+      sunkCells,
+      remaining: FLEET_SPEC.filter(({ length }) => length !== 2).map(({ kind }) => kind),
+    };
+    const water = inferredWater(knowledge);
+    expect(has(water, toCell(3, 3))).toBe(true);
+    expect(has(water, toCell(5, 6))).toBe(true);
+
+    for (let seed = 0; seed < 20; seed += 1) {
+      expect(has(water, ai.nextShot(knowledge, makeRng(seed)))).toBe(false);
+    }
+  });
+
+  test('does not infer a water halo when touching ships are allowed', () => {
+    const sunkCells = bit(toCell(4, 4)) | bit(toCell(4, 5));
+    expect(
+      inferredWater({
+        ...emptyKnowledge(),
+        sunkCells,
+        rules: { ...STANDARD_RULES, shipsMayTouch: true },
+      }),
+    ).toBe(0n);
   });
 
   test('reports exhaustion instead of repeating', () => {
