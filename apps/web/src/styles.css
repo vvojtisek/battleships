@@ -378,6 +378,10 @@ main {
 .cell:focus-visible {
   background: color-mix(in srgb, var(--blue) 34%, var(--board-water));
 }
+.cell.target-selected {
+  box-shadow: inset 0 0 0 3px var(--blue);
+  background: color-mix(in srgb, var(--blue) 38%, var(--board-water));
+}
 .cell.ship {
   background: var(--ship-fill);
   color: var(--ship-ink);
@@ -450,6 +454,36 @@ main {
 .battle-stats strong {
   font-variant-numeric: tabular-nums;
 }
+.board-switch {
+  display: none;
+}
+.touch-shot-hint {
+  display: none;
+}
+.shot-confirmation {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--blue) 48%, var(--separator));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--blue) 12%, var(--fill-secondary));
+}
+.shot-confirmation p {
+  margin: 0 0 0.7rem;
+}
+.shot-confirmation div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.fire-target {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: white;
+  font-weight: 700;
+}
+.fire-target:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 88%, black);
+}
 .error {
   width: min(1120px, 92vw);
   margin: 1rem auto;
@@ -514,6 +548,40 @@ main {
   .boards {
     grid-template-columns: 1fr;
   }
+  .board-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 0 0 1.25rem;
+    padding: 0.3rem;
+    border: 1px solid var(--separator);
+    border-radius: var(--radius-md);
+    background: var(--fill-secondary);
+  }
+  .touch-shot-hint {
+    display: block;
+    margin: -0.75rem 0 1.25rem;
+    color: var(--label-secondary);
+    font-size: var(--caption);
+    font-weight: 600;
+  }
+  .board-switch button {
+    border-color: transparent;
+    background: transparent;
+    font-weight: 700;
+  }
+  .board-switch button[aria-pressed='true'] {
+    border-color: var(--blue);
+    background: var(--bg-primary);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  }
+  .boards.compact-enemy .fleet-board,
+  .boards.compact-fleet .enemy-board {
+    display: none;
+  }
+  .cell {
+    touch-action: manipulation;
+  }
 }
 @media (max-width: 600px) {
   nav {
@@ -533,6 +601,13 @@ main {
   }
   .battle-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .shot-confirmation div {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .shot-confirmation button {
+    min-height: 52px;
   }
   .room-actions,
   .join-form {
