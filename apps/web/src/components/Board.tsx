@@ -44,48 +44,56 @@ export function Board({
   return (
     <section className="board-wrap" aria-label={label}>
       <div className="column-labels" aria-hidden="true">
+        <span />
         {Array.from('ABCDEFGHIJ', (letter) => (
           <span key={letter}>{letter}</span>
         ))}
       </div>
-      <div aria-label={label} className="board" role="grid">
-        {Array.from({ length: 100 }, (_, index) => {
-          const cell = index as Cell;
-          const wasShot = has(shots, cell);
-          const wasHit = has(hits, cell);
-          const occupied = has(fleet, cell);
-          const state = wasHit ? 'hit' : wasShot ? 'miss' : occupied ? 'ship' : 'unknown';
-          const className = [
-            'cell',
-            occupied ? 'ship' : '',
-            wasShot ? (wasHit ? 'hit' : 'miss') : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
-          return (
-            <button
-              aria-label={`${String.fromCharCode(65 + (index % 10))}${Math.floor(index / 10) + 1}, ${state}`}
-              className={className}
-              data-board={label}
-              data-cell={index}
-              data-state={state}
-              disabled={disabled || wasShot}
-              key={index}
-              onClick={() => onCell?.(cell)}
-              onDragOver={(event) => {
-                if (onDropShip) event.preventDefault();
-              }}
-              onDrop={(event) => {
-                const kind = event.dataTransfer.getData('application/x-battleship-kind');
-                if (kind) onDropShip?.(cell, kind);
-              }}
-              onKeyDown={(event) => moveFocus(event, index)}
-              type="button"
-            >
-              <span aria-hidden="true" />
-            </button>
-          );
-        })}
+      <div className="board-body">
+        <div className="row-labels" aria-hidden="true">
+          {Array.from({ length: 10 }, (_, index) => (
+            <span key={index}>{index + 1}</span>
+          ))}
+        </div>
+        <div aria-label={label} className="board" role="grid">
+          {Array.from({ length: 100 }, (_, index) => {
+            const cell = index as Cell;
+            const wasShot = has(shots, cell);
+            const wasHit = has(hits, cell);
+            const occupied = has(fleet, cell);
+            const state = wasHit ? 'hit' : wasShot ? 'miss' : occupied ? 'ship' : 'unknown';
+            const className = [
+              'cell',
+              occupied ? 'ship' : '',
+              wasShot ? (wasHit ? 'hit' : 'miss') : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            return (
+              <button
+                aria-label={`${String.fromCharCode(65 + (index % 10))}${Math.floor(index / 10) + 1}, ${state}`}
+                className={className}
+                data-board={label}
+                data-cell={index}
+                data-state={state}
+                disabled={disabled || wasShot}
+                key={index}
+                onClick={() => onCell?.(cell)}
+                onDragOver={(event) => {
+                  if (onDropShip) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  const kind = event.dataTransfer.getData('application/x-battleship-kind');
+                  if (kind) onDropShip?.(cell, kind);
+                }}
+                onKeyDown={(event) => moveFocus(event, index)}
+                type="button"
+              >
+                <span aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

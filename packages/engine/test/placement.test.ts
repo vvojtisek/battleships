@@ -22,7 +22,7 @@ import {
   type Ship,
 } from '../src/index.js';
 
-const NO_TOUCH: RuleSet = { ...STANDARD_RULES, shipsMayTouch: false };
+const TOUCHING_ALLOWED: RuleSet = { ...STANDARD_RULES, shipsMayTouch: true };
 
 describe('placement', () => {
   test('precomputed masks never wrap and always have the requested length', () => {
@@ -45,11 +45,12 @@ describe('placement', () => {
     expect(placementMask(2, 100 as never, 0)).toBe(0n);
   });
 
-  test('enforces overlap and optional no-touch halos', () => {
+  test('enforces overlap and no-touch halos by default', () => {
     const first = makeShip('destroyer', toCell(0, 0), 'H');
     expect(isLegalPlacement(first.mask, 3, toCell(0, 1), 1, STANDARD_RULES)).toBe(false);
-    expect(isLegalPlacement(first.mask, 3, toCell(1, 0), 0, STANDARD_RULES)).toBe(true);
-    expect(isLegalPlacement(first.mask, 3, toCell(1, 0), 0, NO_TOUCH)).toBe(false);
+    expect(isLegalPlacement(first.mask, 3, toCell(1, 0), 0, STANDARD_RULES)).toBe(false);
+    expect(isLegalPlacement(first.mask, 3, toCell(1, 2), 0, STANDARD_RULES)).toBe(false);
+    expect(isLegalPlacement(first.mask, 3, toCell(1, 0), 0, TOUCHING_ALLOWED)).toBe(true);
     expect(isLegalPlacement(0n, 5, toCell(9, 9), 0, STANDARD_RULES)).toBe(false);
   });
 

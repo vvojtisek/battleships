@@ -20,6 +20,7 @@ body {
       transparent 32rem
     ),
     var(--bg-secondary);
+  color: var(--label-primary);
 }
 
 button,
@@ -195,22 +196,45 @@ main {
   border: 1px solid var(--separator);
   border-radius: var(--radius-lg);
   padding: 0.7rem;
-  background: var(--material-thin);
+  background: var(--material-thick);
   box-shadow: 0 8px 24px rgb(0 0 0 / 5%);
 }
 .column-labels {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
+  grid-template-columns: 1.35rem repeat(10, 1fr);
   margin: 0 0 0.35rem;
-  color: var(--label-secondary);
+  color: var(--label-primary);
   font-size: var(--caption);
+  font-weight: 700;
   text-align: center;
+}
+.board-body {
+  display: grid;
+  grid-template-columns: 1.35rem minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: stretch;
+}
+.row-labels {
+  display: grid;
+  grid-template-rows: repeat(10, 1fr);
+  color: var(--label-primary);
+  font-size: var(--caption);
+  font-weight: 700;
+  text-align: center;
+}
+.row-labels span {
+  display: grid;
+  place-items: center;
 }
 .board {
   aspect-ratio: 1;
   display: grid;
   grid-template-columns: repeat(10, 1fr);
-  gap: 2px;
+  gap: 1px;
+  padding: 1px;
+  background: var(--board-grid);
+  border: 1px solid var(--board-grid);
+  border-radius: var(--radius-cell);
 }
 .cell {
   position: relative;
@@ -219,15 +243,16 @@ main {
   aspect-ratio: 1;
   padding: 0;
   border: 0;
-  border-radius: 4px;
-  background: var(--fill-tertiary);
+  border-radius: 2px;
+  background: var(--board-water);
 }
 .cell:hover:not(:disabled),
 .cell:focus-visible {
-  background: color-mix(in srgb, var(--blue) 28%, var(--fill-tertiary));
+  background: color-mix(in srgb, var(--blue) 34%, var(--board-water));
 }
 .cell.ship {
-  background: var(--label-secondary);
+  background: var(--ship-fill);
+  color: var(--ship-ink);
 }
 .cell.miss {
   background: var(--fill-secondary);
@@ -236,7 +261,7 @@ main {
   width: 28%;
   height: 28%;
   border-radius: 50%;
-  background: var(--label-secondary);
+  background: var(--label-primary);
 }
 .cell.hit {
   background: color-mix(in srgb, var(--red) 18%, var(--fill-tertiary));
@@ -301,5 +326,11 @@ main {
   }
   .board-wrap {
     padding: 0.45rem;
+  }
+  .column-labels {
+    grid-template-columns: 1.1rem repeat(10, 1fr);
+  }
+  .board-body {
+    grid-template-columns: 1.1rem minmax(0, 1fr);
   }
 }
