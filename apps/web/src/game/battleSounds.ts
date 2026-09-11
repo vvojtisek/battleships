@@ -3,6 +3,18 @@ import { useEffect, useRef } from 'react';
 
 export type BattleSound = 'miss' | 'hit' | 'sunk';
 
+export const SOUND_ASSETS: Readonly<Record<BattleSound, string>> = {
+  miss: '/sounds/water-splash.mp3',
+  hit: '/sounds/explosion.mp3',
+  sunk: '/sounds/underwater-explosion.mp3',
+};
+
+const effectDurations: Readonly<Record<BattleSound, number>> = {
+  miss: 1_000,
+  hit: 1_100,
+  sunk: 1_800,
+};
+
 export interface BattleSoundState {
   readonly playerShots: bigint;
   readonly playerHits: bigint;
@@ -69,108 +81,83 @@ export function soundsForChange(
   return sounds;
 }
 
-function tone(
-  context: AudioContext,
-  start: number,
-  duration: number,
-  from: number,
-  to: number,
-  type: OscillatorType,
-  volume: number,
+function playSample(
+  sound: BattleSound,
+  clips: Readonly<Record<BattleSound, HTMLAudioElement>>,
+  stopTimers: Map<BattleSound, number>,
 ): void {
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  oscillator.type = type;
-  oscillator.frequency.setValueAtTime(from, start);
-  oscillator.frequency.exponentialRampToValueAtTime(Math.max(30, to), start + duration);
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(volume, start + 0.015);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start(start);
-  oscillator.stop(start + duration + 0.02);
-}
-
-function noise(context: AudioContext, start: number, duration: number, volume: number): void {
-  const buffer = context.createBuffer(
-    1,
-    Math.ceil(context.sampleRate * duration),
-    context.sampleRate,
+  const clip = clips[sound];
+  const previousTimer = stopTimers.get(sound);
+  if (previousTimer !== undefined) window.clearTimeout(previousTimer);
+  clip.pause();
+  clip.currentTime = 0;
+  void clip.play().catch(() => undefined);
+  stopTimers.set(
+    sound,
+    window.setTimeout(() => {
+      clip.pause();
+      clip.currentTime = 0;
+      stopTimers.delete(sound);
+    }, effectDurations[sound]),
   );
-  const data = buffer.getChannelData(0);
-  for (let index = 0; index < data.length; index += 1) data[index] = Math.random() * 2 - 1;
-  const source = context.createBufferSource();
-  const filter = context.createBiquadFilter();
-  const gain = context.createGain();
-  filter.type = 'bandpass';
-  filter.frequency.value = 180;
-  filter.Q.value = 0.7;
-  gain.gain.setValueAtTime(volume, start);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  source.buffer = buffer;
-  source.connect(filter).connect(gain).connect(context.destination);
-  source.start(start);
-  source.stop(start + duration);
 }
 
-function play(context: AudioContext, sound: BattleSound, start: number): void {
-  if (sound === 'miss') {
-    tone(context, start, 0.16, 900, 210, 'sine', 0.12);
-    tone(context, start + 0.08, 0.11, 280, 95, 'sine', 0.06);
-    return;
-  }
-  if (sound === 'hit') {
-    noise(context, start, 0.28, 0.16);
-    tone(context, start, 0.22, 130, 55, 'square', 0.1);
-    return;
-  }
-  tone(context, start, 0.42, 620, 95, 'triangle', 0.13);
-  tone(context, start + 0.13, 0.32, 260, 70, 'sine', 0.08);
-  noise(context, start + 0.2, 0.22, 0.07);
-}
-
-/** Plays local-only procedural effects after a browser user gesture unlocks Web Audio. */
+/** Plays bundled samples after a browser user gesture unlocks media playback. */
 export function useBattleSounds(snapshot: ProjectedRoomState, enabled: boolean): void {
   const previous = useRef<BattleSoundState | null>(null);
-  const context = useRef<AudioContext | null>(null);
+  const clips = useRef<Readonly<Record<BattleSound, HTMLAudioElement>> | null>(null);
+  const stopTimers = useRef(new Map<BattleSound, number>());
 
   useEffect(() => {
     if (!enabled) return;
+    const loaded = Object.fromEntries(
+      (Object.entries(SOUND_ASSETS) as readonly [BattleSound, string][]).map(([sound, source]) => {
+        const clip = new Audio(source);
+        clip.preload = 'auto';
+        clip.volume = sound === 'miss' ? 0.5 : 0.42;
+        return [sound, clip];
+      }),
+    ) as Record<BattleSound, HTMLAudioElement>;
+    clips.current = loaded;
     const unlock = (): void => {
-      if (typeof AudioContext === 'undefined') return;
-      try {
-        context.current ??= new AudioContext();
-      } catch {
-        return;
+      for (const clip of Object.values(loaded)) {
+        clip.muted = true;
+        void clip
+          .play()
+          .then(() => {
+            clip.pause();
+            clip.currentTime = 0;
+            clip.muted = false;
+          })
+          .catch(() => {
+            clip.muted = false;
+          });
       }
-      if (context.current.state === 'suspended')
-        void context.current.resume().catch(() => undefined);
+      window.removeEventListener('pointerdown', unlock);
     };
     window.addEventListener('pointerdown', unlock, { passive: true });
-    return () => window.removeEventListener('pointerdown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      stopTimers.current.forEach((timer) => window.clearTimeout(timer));
+      stopTimers.current.clear();
+      for (const clip of Object.values(loaded)) {
+        clip.pause();
+        clip.src = '';
+      }
+      clips.current = null;
+    };
   }, [enabled]);
 
   useEffect(() => {
     const current = soundState(snapshot);
     const prior = previous.current;
     previous.current = current;
-    if (!prior || !enabled || !context.current) return;
+    const loaded = clips.current;
+    if (!prior || !enabled || !loaded) return;
     const effects = soundsForChange(prior, current);
     if (effects.length === 0) return;
-    const audio = context.current;
-    void audio
-      .resume()
-      .then(() => {
-        const start = audio.currentTime;
-        effects.forEach((effect, index) => play(audio, effect, start + index * 0.22));
-      })
-      .catch(() => undefined);
+    effects.forEach((effect, index) => {
+      window.setTimeout(() => playSample(effect, loaded, stopTimers.current), index * 220);
+    });
   }, [enabled, snapshot]);
-
-  useEffect(
-    () => () => {
-      void context.current?.close();
-    },
-    [],
-  );
 }

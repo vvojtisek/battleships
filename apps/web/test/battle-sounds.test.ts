@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { soundsForChange, type BattleSoundState } from '../src/game/battleSounds.js';
+import { SOUND_ASSETS, soundsForChange, type BattleSoundState } from '../src/game/battleSounds.js';
 
 const initial: BattleSoundState = {
   playerShots: 0n,
@@ -11,6 +11,14 @@ const initial: BattleSoundState = {
 };
 
 describe('battle sounds', () => {
+  it('maps each outcome to its bundled audio sample', () => {
+    expect(SOUND_ASSETS).toEqual({
+      miss: '/sounds/water-splash.mp3',
+      hit: '/sounds/explosion.mp3',
+      sunk: '/sounds/underwater-explosion.mp3',
+    });
+  });
+
   it('plays a water sound for a newly recorded miss', () => {
     expect(soundsForChange(initial, { ...initial, playerShots: 1n })).toEqual(['miss']);
   });

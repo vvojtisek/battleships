@@ -36,9 +36,9 @@ game**. Once they join, both players place and confirm their fleets. The browser
 available-room list every five seconds; rooms disappear from the list as soon as they have two
 players.
 
-During a battle, the browser generates a short water-drop effect for misses, an explosion for
-hits, and a playful sinking effect when a ship is destroyed. Sound begins only after a player
-gesture and can be disabled with the **Sound on/off** button; the preference stays on that device.
+During a battle, bundled audio samples play for misses, hits, and sunk ships. Sound begins only
+after a player gesture and can be disabled with the **Sound on/off** button; the preference stays
+on that device.
 
 ## The plan
 
