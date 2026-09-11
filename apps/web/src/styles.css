@@ -425,6 +425,15 @@ main {
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
+.battle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.sound-toggle[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--blue) 58%, var(--separator));
+  color: var(--blue);
+}
 .battle-header h1 {
   margin: 0;
   font-size: var(--title);

@@ -1,6 +1,7 @@
 import { label as cellLabel, popcount, type Cell, type ProjectedRoomState } from '@bs/engine';
 import { useEffect, useState } from 'react';
 import { Board } from './Board.js';
+import { useBattleSounds } from '../game/battleSounds.js';
 import type { PlayerCommand } from '../game/messages.js';
 import type { Difficulty } from '../game/messages.js';
 import type { Score } from '../game/scores.js';
@@ -13,6 +14,16 @@ interface Props {
   readonly score?: Score;
   readonly opponentName?: string;
   readonly newGameLabel?: string;
+}
+
+const SOUND_KEY = 'battleships.sound-effects.v1';
+
+function loadSoundPreference(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) !== 'off';
+  } catch {
+    return true;
+  }
 }
 
 function useCompactBattleLayout(): boolean {
@@ -42,6 +53,7 @@ export function Battle({
   const compact = useCompactBattleLayout();
   const [boardView, setBoardView] = useState<'enemy' | 'fleet'>('enemy');
   const [target, setTarget] = useState<Cell | null>(null);
+  const [soundsEnabled, setSoundsEnabled] = useState(loadSoundPreference);
   const ownFleet = snapshot.you.ships.reduce(
     (mask, ship) => ship.cells.reduce((value, cell) => value | (1n << BigInt(cell)), mask),
     0n,
@@ -55,6 +67,8 @@ export function Battle({
   const hits = popcount(opponentHits);
   const accuracy = shots === 0 ? 0 : Math.round((hits / shots) * 100);
   const shipsRemaining = 5 - snapshot.opponent.sunk.length;
+
+  useBattleSounds(snapshot, soundsEnabled);
 
   useEffect(() => {
     if (!compact || !yourTurn || gameOver) setTarget(null);
@@ -79,6 +93,18 @@ export function Battle({
     setTarget(null);
   }
 
+  function toggleSounds(): void {
+    setSoundsEnabled((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(SOUND_KEY, next ? 'on' : 'off');
+      } catch {
+        // Sound preference is optional when browser storage is unavailable.
+      }
+      return next;
+    });
+  }
+
   return (
     <main>
       <header className="battle-header">
@@ -98,11 +124,21 @@ export function Battle({
               : 'One shot per turn. Hits do not grant an extra shot.'}
           </p>
         </div>
-        {gameOver && (
-          <button onClick={onNewGame} type="button">
-            {newGameLabel}
+        <div className="battle-actions">
+          <button
+            aria-pressed={soundsEnabled}
+            className="sound-toggle"
+            onClick={toggleSounds}
+            type="button"
+          >
+            Sound {soundsEnabled ? 'on' : 'off'}
           </button>
-        )}
+          {gameOver && (
+            <button onClick={onNewGame} type="button">
+              {newGameLabel}
+            </button>
+          )}
+        </div>
       </header>
       <section aria-label="Battle statistics" className="battle-stats">
         <div>
