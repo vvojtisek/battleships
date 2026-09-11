@@ -23,7 +23,8 @@ const human = playerId('local-human');
 const bot = playerId('local-bot');
 let state: RoomState | null = null;
 let difficulty: Difficulty = 'hard';
-let timer: ReturnType<typeof setTimeout> | null = null;
+let botTimer: ReturnType<typeof setTimeout> | null = null;
+let turnTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emit(event: WorkerEvent): void {
   self.postMessage(event);
@@ -42,6 +43,7 @@ function dispatch(command: Command): boolean {
   }
   state = result.value.state;
   snapshot();
+  scheduleTurn();
   return true;
 }
 
@@ -64,11 +66,24 @@ function botKnowledge(room: RoomState): Knowledge {
   };
 }
 
-function scheduleBot(): void {
-  if (!state || state.phase.kind !== 'in_game' || state.phase.turn !== bot) return;
-  if (timer) clearTimeout(timer);
+function scheduleTurn(): void {
+  if (botTimer) clearTimeout(botTimer);
+  if (turnTimer) clearTimeout(turnTimer);
+  botTimer = null;
+  turnTimer = null;
+  if (!state || state.phase.kind !== 'in_game') return;
+  const { turn, turnDeadline } = state.phase;
+  turnTimer = setTimeout(
+    () => {
+      if (state?.phase.kind === 'in_game' && state.phase.turn === turn) {
+        dispatch({ type: 'player.timeout', actor: turn });
+      }
+    },
+    Math.max(0, turnDeadline - Date.now()),
+  );
+  if (turn !== bot) return;
   const delayRng = makeRng(state.rngState);
-  timer = setTimeout(
+  botTimer = setTimeout(
     () => {
       if (!state || state.phase.kind !== 'in_game' || state.phase.turn !== bot) return;
       const rng = makeRng(state.rngState);
@@ -82,7 +97,8 @@ function scheduleBot(): void {
 
 function newGame(level: Difficulty): void {
   difficulty = level;
-  if (timer) clearTimeout(timer);
+  if (botTimer) clearTimeout(botTimer);
+  if (turnTimer) clearTimeout(turnTimer);
   state = createRoom({
     id: roomId(`local-${Date.now()}-${Math.random().toString(36).slice(2)}`),
     code: 'LOCAL1',
@@ -110,5 +126,5 @@ self.addEventListener('message', ({ data }: MessageEvent<WorkerCommand>) => {
   }
   if (!state) return;
   const command = { ...data.command, actor: human } as Command;
-  if (dispatch(command)) scheduleBot();
+  dispatch(command);
 });

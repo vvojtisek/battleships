@@ -88,7 +88,7 @@ function Landing() {
 
 function Play() {
   const transport = useMemo(() => new LocalTransport(), []);
-  const { snapshot, difficulty, error, receive, fail, connect } = useGame();
+  const { snapshot, difficulty, error, receive, fail, connect, clearSnapshot } = useGame();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { profile, token, refresh } = useAuth();
@@ -143,6 +143,7 @@ function Play() {
   }, [palette]);
 
   useEffect(() => {
+    clearSnapshot();
     connect((command) => transport.send(command));
     const unsubscribe = transport.onEvent((event) => {
       if (event.type === 'game.snapshot') receive(event.state);
@@ -152,7 +153,7 @@ function Play() {
       unsubscribe();
       transport.close();
     };
-  }, [connect, fail, receive, transport]);
+  }, [clearSnapshot, connect, fail, receive, transport]);
 
   useEffect(() => {
     transport.send({ type: 'game.new', difficulty: matchDifficulty });
@@ -206,9 +207,13 @@ function Play() {
   }
 
   async function forfeit(): Promise<void> {
-    if (snapshot) recordedMatches.current.add(snapshot.matchId);
+    if (snapshot?.phase.kind !== 'in_game') {
+      void navigate('/menu', { replace: true });
+      return;
+    }
+    recordedMatches.current.add(snapshot.matchId);
     transport.send({ type: 'game.command', command: { type: 'player.resign' } });
-    await recordAiResult('ai', snapshot?.matchId ?? `forfeit-${Date.now()}`);
+    await recordAiResult('ai', snapshot.matchId);
     void navigate('/menu', { replace: true });
   }
 
@@ -237,6 +242,8 @@ function Play() {
     <MatchFrame
       mode="Single player"
       onForfeit={forfeit}
+      phase={snapshot.phase.kind === 'game_over' ? 'over' : 'active'}
+      canForfeit={snapshot.phase.kind === 'in_game'}
       settings={
         <section aria-label="Appearance" className="match-appearance">
           <h3>Appearance</h3>
@@ -297,8 +304,10 @@ function Play() {
           snapshot={snapshot}
           send={send}
           onNewGame={newGame}
-          newGameLabel={`Play ${matchDifficulty[0]!.toUpperCase()}${matchDifficulty.slice(1)} AI again`}
+          newGameLabel="Play again (same difficulty)"
           onChooseDifficulty={() => void navigate('/single-player')}
+          onLeaderboard={() => void navigate('/leaderboard')}
+          onMainMenu={() => void navigate('/menu')}
         />
       )}
     </MatchFrame>
