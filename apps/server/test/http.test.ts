@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/index.js';
+import { RoomRegistry } from '../src/room/RoomRegistry.js';
 
 const servers: Awaited<ReturnType<typeof buildServer>>[] = [];
 afterEach(async () => {
@@ -29,6 +30,27 @@ describe('HTTP gateway', () => {
       playerId: expect.any(String),
       resumeToken: expect.any(String),
     });
+  });
+
+  it('lists joinable LAN rooms with their creator names only', async () => {
+    const registry = new RoomRegistry();
+    registry.create('Ada');
+    const app = await buildServer(registry);
+    servers.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/api/rooms' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      rooms: [
+        {
+          code: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{6}$/),
+          creatorName: 'Ada',
+        },
+      ],
+    });
+    expect(response.body).not.toContain('resumeToken');
+    expect(response.body).not.toContain('playerId');
   });
 
   it('rejects malformed room creation input', async () => {

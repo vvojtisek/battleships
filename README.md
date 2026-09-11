@@ -30,9 +30,11 @@ With this PC at `192.168.0.211`, open `http://192.168.0.211:4173` from another d
 `192.168.0.0/24`. Keep the router/firewall scoped to that subnet; neither service should
 be port-forwarded or exposed to the public internet.
 
-For a LAN game, open `/multiplayer`, create a room, and give the six-character room code to
-the other player. The other device opens the same page, enters its name and the code, then both
-players place and confirm their fleets.
+For a LAN game, open `/multiplayer`, enter your name, and create a room. The other device opens
+the same page, enters its name, sees the available room with its creator's name, and taps **Join
+game**. Once they join, both players place and confirm their fleets. The browser refreshes the
+available-room list every five seconds; rooms disappear from the list as soon as they have two
+players.
 
 ## The plan
 

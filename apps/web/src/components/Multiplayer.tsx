@@ -8,6 +8,11 @@ import { RemoteTransport, type RemoteEvent } from '../game/RemoteTransport.js';
 const NAME_KEY = 'battleships.display-name.v1';
 const tokenKey = (code: string) => `battleships.room-token.${code}`;
 
+interface JoinableRoom {
+  readonly code: string;
+  readonly creatorName: string;
+}
+
 function serverUrl(): string {
   const configured = import.meta.env.VITE_SERVER_URL;
   return typeof configured === 'string'
@@ -47,12 +52,61 @@ function saveToken(code: string, token: string): void {
   }
 }
 
+function isJoinableRoom(value: unknown): value is JoinableRoom {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'code' in value &&
+    'creatorName' in value &&
+    typeof value.code === 'string' &&
+    /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$/.test(value.code) &&
+    typeof value.creatorName === 'string' &&
+    value.creatorName.length > 0
+  );
+}
+
 export function MultiplayerHome() {
   const navigate = useNavigate();
   const [name, setName] = useState(loadName);
-  const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [rooms, setRooms] = useState<readonly JoinableRoom[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    async function loadRooms(): Promise<void> {
+      try {
+        const response = await fetch(new URL('/api/rooms', serverUrl()), {
+          signal: controller.signal,
+        });
+        const result: unknown = await response.json();
+        if (!response.ok || !result || typeof result !== 'object' || !('rooms' in result)) {
+          throw new Error('Could not load rooms from the LAN server.');
+        }
+        if (!Array.isArray(result.rooms) || !result.rooms.every(isJoinableRoom)) {
+          throw new Error('The LAN server returned an invalid room list.');
+        }
+        if (active) setRooms(result.rooms);
+      } catch (cause) {
+        if (active && !(cause instanceof DOMException && cause.name === 'AbortError')) {
+          setError(cause instanceof Error ? cause.message : 'Could not reach the LAN server.');
+        }
+      } finally {
+        if (active) setLoadingRooms(false);
+      }
+    }
+
+    void loadRooms();
+    const refresh = window.setInterval(() => void loadRooms(), 5_000);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(refresh);
+    };
+  }, []);
 
   async function createRoom(): Promise<void> {
     const displayName = name.trim();
@@ -86,25 +140,20 @@ export function MultiplayerHome() {
     }
   }
 
-  function joinRoom(): void {
-    const normalized = code.trim().toUpperCase();
-    if (!/^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$/.test(normalized)) {
-      setError('Enter the six-character room code.');
-      return;
-    }
+  function joinRoom(room: JoinableRoom): void {
     if (!name.trim()) {
       setError('Enter your name before joining a room.');
       return;
     }
     saveName(name.trim());
-    void navigate(`/room/${normalized}`);
+    void navigate(`/room/${room.code}`);
   }
 
   return (
     <main className="room-home">
       <p className="eyebrow">Private home LAN</p>
       <h1>Play with someone nearby</h1>
-      <p>Make a room on this device, then share its six-character code with the other player.</p>
+      <p>Create a room, or join an available game on your home network.</p>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -118,20 +167,34 @@ export function MultiplayerHome() {
         <button disabled={creating} onClick={() => void createRoom()} type="button">
           {creating ? 'Creating room…' : 'Create room'}
         </button>
-        <label>
-          Room code
-          <input
-            aria-label="Room code"
-            maxLength={6}
-            onChange={(event) => setCode(event.target.value.toUpperCase())}
-            placeholder="ABC123"
-            value={code}
-          />
-        </label>
-        <button onClick={joinRoom} type="button">
-          Join room
-        </button>
       </div>
+      <section aria-live="polite" aria-label="Available rooms" className="room-list">
+        <div className="room-list-heading">
+          <h2>Available rooms</h2>
+          <span>{loadingRooms ? 'Looking…' : `${rooms.length} open`}</span>
+        </div>
+        {loadingRooms ? (
+          <p>Looking for games on your home network…</p>
+        ) : rooms.length === 0 ? (
+          <p>
+            No rooms are open right now. Create one and it will appear here for the other player.
+          </p>
+        ) : (
+          <ul>
+            {rooms.map((room) => (
+              <li key={room.code}>
+                <div>
+                  <strong>{room.creatorName}</strong>
+                  <span>Waiting for an opponent</span>
+                </div>
+                <button onClick={() => joinRoom(room)} type="button">
+                  Join game
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <Link to="/play">Play against the computer instead</Link>
     </main>
   );
@@ -239,10 +302,9 @@ export function MultiplayerRoom() {
           <p className="eyebrow">Private home LAN room</p>
           <h1>Room {code}</h1>
           <p>
-            Share this code with the other player. Their screen will move both players to fleet
-            placement as soon as they join.
+            This room is visible to people on your home network. Their multiplayer screen will show
+            your name and move both players to fleet placement as soon as they join.
           </p>
-          <strong className="room-code room-code-large">{code}</strong>
           <p aria-live="polite">Waiting for an opponent…</p>
           <Link to="/multiplayer">Create or join another room</Link>
         </main>
