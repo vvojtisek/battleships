@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authorization, serverRequest } from '../game/lanServer.js';
 import { profileFrom, type Profile } from './profile.js';
-import { activeUserLabel, isActiveSession } from './session.js';
+import { activeUserLabel, isActiveSession, isGuestEntryRequest } from './session.js';
 
 const SESSION_KEY = 'battleships.profile-session.v1';
 const GUEST_KEY = 'battleships.guest-session.v1';
@@ -23,8 +23,20 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function guestRequested(): boolean {
+  try {
+    return isGuestEntryRequest(window.location.search);
+  } catch {
+    return false;
+  }
+}
+
 function loadToken(): string | null {
   try {
+    if (guestRequested()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
     return localStorage.getItem(SESSION_KEY);
   } catch {
     return null;
@@ -42,7 +54,9 @@ function saveToken(token: string | null): void {
 
 function loadGuest(): boolean {
   try {
-    return sessionStorage.getItem(GUEST_KEY) === 'active';
+    const requested = guestRequested();
+    if (requested) sessionStorage.setItem(GUEST_KEY, 'active');
+    return requested || sessionStorage.getItem(GUEST_KEY) === 'active';
   } catch {
     return false;
   }

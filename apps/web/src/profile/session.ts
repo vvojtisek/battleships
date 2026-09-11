@@ -3,6 +3,10 @@ export interface SessionState {
   readonly guest: boolean;
 }
 
+export function isGuestEntryRequest(search: string): boolean {
+  return new URLSearchParams(search).get('guest') === '1';
+}
+
 export function isActiveSession({ profile, guest }: SessionState): boolean {
   return profile !== null || guest;
 }
