@@ -9,6 +9,7 @@ interface BoardProps {
   readonly disabled?: boolean;
   readonly preview?: BitBoard;
   readonly previewState?: 'valid' | 'invalid';
+  readonly selectedCell?: Cell | null;
   readonly onCell?: (cell: Cell) => void;
   readonly onPreviewCell?: (cell: Cell) => void;
   readonly onDropShip?: (cell: Cell, shipKind: string) => void;
@@ -22,6 +23,7 @@ export function Board({
   disabled = false,
   preview = 0n,
   previewState = 'valid',
+  selectedCell = null,
   onCell,
   onPreviewCell,
   onDropShip,
@@ -82,6 +84,7 @@ export function Board({
             const wasHit = has(hits, cell);
             const occupied = has(fleet, cell);
             const previewed = has(preview, cell);
+            const selected = selectedCell === cell;
             const interactive = !disabled && !wasShot;
             const state = wasHit ? 'hit' : wasShot ? 'miss' : occupied ? 'ship' : 'unknown';
             const className = [
@@ -89,12 +92,13 @@ export function Board({
               occupied ? 'ship' : '',
               wasShot ? (wasHit ? 'hit' : 'miss') : '',
               previewed ? `preview-${previewState}` : '',
+              selected ? 'target-selected' : '',
             ]
               .filter(Boolean)
               .join(' ');
             return (
               <button
-                aria-label={`${String.fromCharCode(65 + (index % 10))}${Math.floor(index / 10) + 1}, ${state}`}
+                aria-label={`${String.fromCharCode(65 + (index % 10))}${Math.floor(index / 10) + 1}, ${state}${selected ? ', selected target' : ''}`}
                 className={className}
                 data-board={label}
                 data-cell={index}

@@ -1,4 +1,5 @@
-import { popcount, type Cell, type ProjectedRoomState } from '@bs/engine';
+import { label as cellLabel, popcount, type Cell, type ProjectedRoomState } from '@bs/engine';
+import { useEffect, useState } from 'react';
 import { Board } from './Board.js';
 import type { PlayerCommand } from '../game/messages.js';
 import type { Difficulty } from '../game/messages.js';
@@ -14,6 +15,21 @@ interface Props {
   readonly newGameLabel?: string;
 }
 
+function useCompactBattleLayout(): boolean {
+  const query = '(max-width: 1023px)';
+  const [compact, setCompact] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const updateLayout = (): void => setCompact(mediaQuery.matches);
+    updateLayout();
+    mediaQuery.addEventListener('change', updateLayout);
+    return () => mediaQuery.removeEventListener('change', updateLayout);
+  }, []);
+
+  return compact;
+}
+
 export function Battle({
   snapshot,
   send,
@@ -23,6 +39,9 @@ export function Battle({
   opponentName = 'Computer',
   newGameLabel = 'Play again',
 }: Props) {
+  const compact = useCompactBattleLayout();
+  const [boardView, setBoardView] = useState<'enemy' | 'fleet'>('enemy');
+  const [target, setTarget] = useState<Cell | null>(null);
   const ownFleet = snapshot.you.ships.reduce(
     (mask, ship) => ship.cells.reduce((value, cell) => value | (1n << BigInt(cell)), mask),
     0n,
@@ -37,8 +56,27 @@ export function Battle({
   const accuracy = shots === 0 ? 0 : Math.round((hits / shots) * 100);
   const shipsRemaining = 5 - snapshot.opponent.sunk.length;
 
+  useEffect(() => {
+    if (!compact || !yourTurn || gameOver) setTarget(null);
+  }, [compact, gameOver, yourTurn]);
+
   function fire(cell: Cell): void {
     send({ type: 'turn.fire', cell, at: Date.now() });
+  }
+
+  function aimOrFire(cell: Cell): void {
+    if (compact) {
+      setBoardView('enemy');
+      setTarget(cell);
+      return;
+    }
+    fire(cell);
+  }
+
+  function confirmTarget(): void {
+    if (target === null) return;
+    fire(target);
+    setTarget(null);
   }
 
   return (
@@ -92,8 +130,46 @@ export function Battle({
           </div>
         )}
       </section>
-      <div className="boards">
-        <div>
+      {compact && (
+        <>
+          <div aria-label="Choose board" className="board-switch" role="group">
+            <button
+              aria-pressed={boardView === 'enemy'}
+              onClick={() => setBoardView('enemy')}
+              type="button"
+            >
+              Enemy waters
+            </button>
+            <button
+              aria-pressed={boardView === 'fleet'}
+              onClick={() => setBoardView('fleet')}
+              type="button"
+            >
+              Your fleet
+            </button>
+          </div>
+          {yourTurn && !gameOver && (
+            <p className="touch-shot-hint">Tap a square, then confirm your shot.</p>
+          )}
+        </>
+      )}
+      {compact && target !== null && yourTurn && !gameOver && (
+        <section aria-live="polite" className="shot-confirmation">
+          <p>
+            Target selected: <strong>{cellLabel(target)}</strong>
+          </p>
+          <div>
+            <button className="fire-target" onClick={confirmTarget} type="button">
+              Fire at {cellLabel(target)}
+            </button>
+            <button onClick={() => setTarget(null)} type="button">
+              Choose again
+            </button>
+          </div>
+        </section>
+      )}
+      <div className={`boards${compact ? ` compact-${boardView}` : ''}`}>
+        <div className="fleet-board">
           <h2>Your fleet</h2>
           <Board
             label="Your fleet board"
@@ -103,14 +179,15 @@ export function Battle({
             disabled
           />
         </div>
-        <div>
+        <div className="enemy-board">
           <h2>Enemy waters</h2>
           <Board
             label="Enemy waters board"
             shots={opponentShots}
             hits={opponentHits}
             disabled={!yourTurn || gameOver}
-            onCell={fire}
+            onCell={aimOrFire}
+            selectedCell={target}
           />
         </div>
       </div>
