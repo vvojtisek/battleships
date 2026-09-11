@@ -4,14 +4,13 @@ import { Board } from './Board.js';
 import { useBattleSounds } from '../game/battleSounds.js';
 import type { PlayerCommand } from '../game/messages.js';
 import type { Difficulty } from '../game/messages.js';
-import type { Score } from '../game/scores.js';
 
 interface Props {
   readonly snapshot: ProjectedRoomState;
   readonly send: (command: PlayerCommand) => void;
   readonly onNewGame: () => void;
   readonly difficulty?: Difficulty;
-  readonly score?: Score;
+  readonly playerPoints?: number;
   readonly opponentName?: string;
   readonly newGameLabel?: string;
 }
@@ -46,7 +45,7 @@ export function Battle({
   send,
   onNewGame,
   difficulty,
-  score,
+  playerPoints,
   opponentName = 'Computer',
   newGameLabel = 'Play again',
 }: Props) {
@@ -157,12 +156,10 @@ export function Battle({
           <span>Enemy ships</span>
           <strong>{shipsRemaining}</strong>
         </div>
-        {difficulty && score && (
+        {difficulty && playerPoints !== undefined && (
           <div>
-            <span>{difficulty} record</span>
-            <strong>
-              {score.wins}–{score.losses}
-            </strong>
+            <span>Career points</span>
+            <strong>{playerPoints}</strong>
           </div>
         )}
       </section>

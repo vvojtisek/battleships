@@ -29,7 +29,11 @@ const JoinSchema = z
   .object({
     type: z.literal('room.join'),
     payload: z
-      .object({ code: RoomCodeSchema, displayName: z.string().trim().min(1).max(24) })
+      .object({
+        code: RoomCodeSchema,
+        displayName: z.string().trim().min(1).max(24),
+        sessionToken: z.string().min(1).max(512).optional(),
+      })
       .strict(),
   })
   .strict();

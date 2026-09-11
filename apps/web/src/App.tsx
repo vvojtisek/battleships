@@ -3,12 +3,13 @@ import { Link, Navigate, Route, Routes } from 'react-router';
 import { Battle } from './components/Battle.js';
 import { FleetPlacement } from './components/FleetPlacement.js';
 import { MultiplayerHome, MultiplayerRoom } from './components/Multiplayer.js';
+import { Leaderboard, ProfileView } from './components/Profile.js';
 import { LocalTransport } from './game/LocalTransport.js';
+import { authorization, serverRequest } from './game/lanServer.js';
 import type { PlayerCommand } from './game/messages.js';
 import { useGame } from './store/game.js';
-import { emptyScores, recordScore, type Scores } from './game/scores.js';
+import { AuthProvider, useAuth } from './profile/Auth.js';
 
-const SCORES_KEY = 'battleships.scores.v1';
 const PALETTE_KEY = 'battleships.palette.v1';
 
 interface Palette {
@@ -52,24 +53,6 @@ function contrastColor(color: string): string {
   return luminance > 0.52 ? '#10212d' : '#ffffff';
 }
 
-function loadScores(): Scores {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(SCORES_KEY) ?? 'null');
-    if (
-      value &&
-      typeof value === 'object' &&
-      'easy' in value &&
-      'medium' in value &&
-      'hard' in value
-    ) {
-      return value as Scores;
-    }
-  } catch {
-    // Score history is optional and must never block a game.
-  }
-  return emptyScores();
-}
-
 function Landing() {
   return (
     <main className="landing">
@@ -85,6 +68,12 @@ function Landing() {
       <Link className="secondary-link" to="/multiplayer">
         Play on your home LAN
       </Link>
+      <Link className="secondary-link" to="/leaderboard">
+        View top 10 captains
+      </Link>
+      <Link className="secondary-link" to="/profile">
+        Sign in or create a profile
+      </Link>
     </main>
   );
 }
@@ -92,7 +81,7 @@ function Landing() {
 function Play() {
   const transport = useMemo(() => new LocalTransport(), []);
   const { snapshot, difficulty, error, setDifficulty, receive, fail, connect } = useGame();
-  const [scores, setScores] = useState<Scores>(loadScores);
+  const { profile, token, refresh } = useAuth();
   const [palette, setPalette] = useState<Palette | null>(loadPalette);
   const recordedMatches = useRef(new Set<string>());
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
@@ -152,24 +141,29 @@ function Play() {
   }, [difficulty, transport]);
 
   useEffect(() => {
-    if (
-      !snapshot ||
-      snapshot.phase.kind !== 'game_over' ||
-      recordedMatches.current.has(snapshot.matchId)
-    )
-      return;
+    const phase = snapshot?.phase;
+    if (!snapshot || !phase || phase.kind !== 'game_over') return;
+    const completedMatch = snapshot;
+    const winner = phase.winner;
+    if (recordedMatches.current.has(completedMatch.matchId)) return;
     recordedMatches.current.add(snapshot.matchId);
-    const won = snapshot.phase.winner === snapshot.you.id;
-    setScores((current) => {
-      const next = recordScore(current, difficulty, won);
+    async function recordResult(): Promise<void> {
       try {
-        localStorage.setItem(SCORES_KEY, JSON.stringify(next));
+        const response = await serverRequest('/api/scores/ai', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...authorization(token) },
+          body: JSON.stringify({
+            difficulty,
+            winner: winner === completedMatch.you.id ? 'player' : 'ai',
+          }),
+        });
+        if (response.ok) await refresh();
       } catch {
-        /* optional persistence */
+        // Local games remain fully playable if the LAN ranking server is offline.
       }
-      return next;
-    });
-  }, [difficulty, snapshot]);
+    }
+    void recordResult();
+  }, [difficulty, refresh, snapshot, token]);
 
   function newGame(): void {
     transport.send({ type: 'game.new', difficulty });
@@ -201,6 +195,8 @@ function Play() {
       <nav>
         <Link to="/">Battleships</Link>
         <Link to="/multiplayer">Multiplayer</Link>
+        <Link to="/leaderboard">Top 10</Link>
+        <Link to="/profile">{profile ? profile.username : 'Profile'}</Link>
         <label className="difficulty-control">
           Difficulty{' '}
           <select
@@ -261,7 +257,7 @@ function Play() {
       ) : (
         <Battle
           difficulty={difficulty}
-          score={scores[difficulty]}
+          {...(profile ? { playerPoints: profile.points } : {})}
           snapshot={snapshot}
           send={send}
           onNewGame={newGame}
@@ -273,12 +269,16 @@ function Play() {
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/play" element={<Play />} />
-      <Route path="/multiplayer" element={<MultiplayerHome />} />
-      <Route path="/room/:code" element={<MultiplayerRoom />} />
-      <Route path="*" element={<Navigate replace to="/" />} />
-    </Routes>
+    <AuthProvider>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/play" element={<Play />} />
+        <Route path="/multiplayer" element={<MultiplayerHome />} />
+        <Route path="/room/:code" element={<MultiplayerRoom />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/profile" element={<ProfileView />} />
+        <Route path="*" element={<Navigate replace to="/" />} />
+      </Routes>
+    </AuthProvider>
   );
 }

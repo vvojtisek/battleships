@@ -38,7 +38,31 @@ players.
 
 During a battle, bundled audio samples play for misses, hits, and sunk ships. Sound begins only
 after a player gesture and can be disabled with the **Sound on/off** button; the preference stays
-on that device.
+on that device. A regular hit uses the underwater-impact sample; only the final hit that sinks a
+ship uses the explosion sample.
+
+### Profiles and shared top 10
+
+The LAN server keeps its lightweight profile and leaderboard data in `data/players.json` on the
+host machine. It is automatically created on first start, is intentionally ignored by Git, and is
+the only file to back up if you want to keep local player profiles and scores when moving the
+server. Passwords/PINs are salted and hashed; the file does not store the entered PIN/password.
+
+Open **Sign in or create a profile** to register a 3–24-character name and a 4–64-character PIN or
+password. The session remains active on that browser. Guests can play solo and LAN games, but only
+registered players receive human points. The shared **Top 10** is seeded on first run and is served
+by the LAN host to every device.
+
+| Result | Points |
+|---|---:|
+| Player beats Easy AI | +1 |
+| Player beats Medium AI | +2 |
+| Player beats Hard AI | +4 |
+| Player wins LAN PvP | +3 |
+| AI victory | the matching difficulty value |
+
+Only the ten highest totals are displayed. The ranking is shared by registered players, seeded
+captains, and the three AI opponents.
 
 ## The plan
 

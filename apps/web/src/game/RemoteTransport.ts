@@ -74,8 +74,12 @@ export class RemoteTransport {
     });
   }
 
-  public join(code: string, displayName: string): void {
-    this.sendEnvelope('room.join', { code, displayName });
+  public join(code: string, displayName: string, sessionToken?: string): void {
+    this.sendEnvelope('room.join', {
+      code,
+      displayName,
+      ...(sessionToken ? { sessionToken } : {}),
+    });
   }
 
   public send(command: PlayerCommand): void {

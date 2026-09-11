@@ -1,15 +1,23 @@
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import websocket from '@fastify/websocket';
 import { playerId, type Cell, type Command, type PlayerId } from '@bs/engine';
 import { ClientEnvelopeSchema, type ClientEnvelope } from '@bs/protocol';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { type Connection, type ServerMessage } from '../room/RoomActor.js';
 import { RoomRegistry } from '../room/RoomRegistry.js';
+import {
+  ProfileStore,
+  ProfileStoreError,
+  type Difficulty,
+  type MatchWinner,
+} from '../profile/ProfileStore.js';
 
 const MAX_FRAME_BYTES = 4 * 1024;
 
 export interface ServerOptions {
   readonly allowedOrigins?: readonly string[];
+  readonly profileStore?: ProfileStore;
 }
 
 interface SocketSession {
@@ -70,11 +78,30 @@ function displayName(value: unknown): string | null {
     : null;
 }
 
+function bearerToken(value: string | undefined): string | undefined {
+  const match = value?.match(/^Bearer ([A-Za-z0-9_-]{20,})$/u);
+  return match?.[1];
+}
+
+function validDifficulty(value: unknown): value is Difficulty {
+  return value === 'easy' || value === 'medium' || value === 'hard';
+}
+
+function validMatchWinner(value: unknown): value is MatchWinner {
+  return value === 'player' || value === 'ai';
+}
+
 export async function buildServer(
   registry = new RoomRegistry(),
   options: ServerOptions = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: MAX_FRAME_BYTES });
+  const profiles =
+    options.profileStore ?? new ProfileStore(resolve(process.cwd(), 'data', 'players.json'));
+  await profiles.initialize();
+  registry.setWinnerHandler((code, winner) => {
+    void profiles.recordPvpWin(registry.profileFor(code, winner));
+  });
   const allowedOrigins = new Set(options.allowedOrigins ?? ['http://localhost:5173']);
   app.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
@@ -85,7 +112,7 @@ export async function buildServer(
       }
       reply.header('access-control-allow-origin', origin);
       reply.header('access-control-allow-methods', 'POST, OPTIONS');
-      reply.header('access-control-allow-headers', 'content-type');
+      reply.header('access-control-allow-headers', 'content-type, authorization');
       reply.header('vary', 'Origin');
     }
     if (request.method === 'OPTIONS') return reply.code(204).send();
@@ -95,12 +122,71 @@ export async function buildServer(
   });
 
   app.get('/healthz', () => ({ status: 'ok' }));
+  app.get('/api/leaderboard', () => ({ entries: profiles.leaderboard() }));
+  app.get('/api/auth/me', (request) => {
+    const profile = profiles.activeUser(bearerToken(request.headers.authorization));
+    return { profile };
+  });
+  app.post('/api/auth/register', async (request, reply) => {
+    const body = request.body as { username?: unknown; password?: unknown } | undefined;
+    if (typeof body?.username !== 'string' || typeof body.password !== 'string')
+      return reply
+        .code(400)
+        .send({ code: 'E_MALFORMED', detail: 'username and password are required' });
+    try {
+      return await reply.code(201).send(await profiles.register(body.username, body.password));
+    } catch (error) {
+      if (error instanceof ProfileStoreError) {
+        const detail =
+          error.code === 'USERNAME_TAKEN'
+            ? 'That username is already registered.'
+            : 'Use a 3–24 character username and a 4–64 character PIN or password.';
+        return reply.code(400).send({ code: error.code, detail });
+      }
+      throw error;
+    }
+  });
+  app.post('/api/auth/login', async (request, reply) => {
+    const body = request.body as { username?: unknown; password?: unknown } | undefined;
+    if (typeof body?.username !== 'string' || typeof body.password !== 'string')
+      return reply
+        .code(400)
+        .send({ code: 'E_MALFORMED', detail: 'username and password are required' });
+    try {
+      return await reply.send(await profiles.login(body.username, body.password));
+    } catch (error) {
+      if (error instanceof ProfileStoreError)
+        return reply
+          .code(401)
+          .send({ code: error.code, detail: 'Username or PIN/password is incorrect.' });
+      throw error;
+    }
+  });
+  app.post('/api/auth/logout', async (request, reply) => {
+    const token = bearerToken(request.headers.authorization);
+    if (token) await profiles.logout(token);
+    return reply.code(204).send();
+  });
+  app.post('/api/scores/ai', async (request, reply) => {
+    const body = request.body as { difficulty?: unknown; winner?: unknown } | undefined;
+    if (!validDifficulty(body?.difficulty) || !validMatchWinner(body.winner))
+      return reply
+        .code(400)
+        .send({ code: 'E_MALFORMED', detail: 'difficulty and winner are required' });
+    const profile = profiles.activeUser(bearerToken(request.headers.authorization));
+    if (body.winner === 'player' && !profile)
+      return reply.code(401).send({ code: 'E_AUTH', detail: 'Sign in to collect player points.' });
+    return reply.send({
+      entries: await profiles.recordAiMatch(body.difficulty, body.winner, profile),
+    });
+  });
   app.get('/api/rooms', () => ({ rooms: registry.listJoinable() }));
   app.post('/api/rooms', async (request, reply) => {
     const name = displayName((request.body as { displayName?: unknown } | undefined)?.displayName);
     if (!name)
       return reply.code(400).send({ code: 'E_MALFORMED', detail: 'displayName is required' });
-    const room = registry.create(name);
+    const profile = profiles.activeUser(bearerToken(request.headers.authorization));
+    const room = registry.create(profile?.username ?? name, profile?.username);
     return reply
       .code(201)
       .send({ code: room.code, playerId: room.playerId, resumeToken: room.resumeToken });
@@ -131,7 +217,7 @@ export async function buildServer(
       const envelope = ClientEnvelopeSchema.safeParse(parsed);
       if (!envelope.success)
         return send({ type: 'error', code: 'E_MALFORMED', detail: 'invalid envelope' });
-      handleEnvelope(envelope.data, session, registry, send, close);
+      handleEnvelope(envelope.data, session, registry, profiles, send, close);
     });
     socket.on('close', () => {
       clearTimeout(helloTimeout);
@@ -145,6 +231,7 @@ function handleEnvelope(
   envelope: ClientEnvelope,
   session: SocketSession,
   registry: RoomRegistry,
+  profiles: ProfileStore,
   send: (message: ServerMessage | Record<string, unknown>) => void,
   close: (code: number, detail: string) => void,
 ): void {
@@ -171,13 +258,21 @@ function handleEnvelope(
         detail: 'room not found',
         cmdId: envelope.cmdId,
       });
+    const profile = profiles.activeUser(envelope.payload.sessionToken);
+    if (envelope.payload.sessionToken && !profile)
+      return send({
+        type: 'error',
+        code: 'E_AUTH',
+        detail: 'Your profile session has expired. Please sign in again.',
+        cmdId: envelope.cmdId,
+      });
     const player = playerId(randomUUID());
     actor.submit(
       player,
       {
         type: 'room.join',
         actor: player,
-        displayName: envelope.payload.displayName,
+        displayName: profile?.username ?? envelope.payload.displayName,
         at: Date.now(),
       },
       envelope.cmdId,
@@ -199,6 +294,7 @@ function handleEnvelope(
       });
     session.playerId = player;
     session.code = envelope.payload.code;
+    registry.setProfile(session.code, player, profile?.username);
     actor.attach({ playerId: player, send });
     return send({
       type: 'conn.ready',

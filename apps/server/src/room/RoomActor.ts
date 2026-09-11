@@ -38,6 +38,7 @@ export class RoomActor {
   public constructor(
     private state: RoomState,
     private readonly now: () => number = Date.now,
+    private readonly onGameOver?: (winner: PlayerId) => void,
   ) {}
 
   public attach(connection: Connection): void {
@@ -85,6 +86,9 @@ export class RoomActor {
       return;
     }
     this.state = result.value.state;
+    for (const event of result.value.events) {
+      if (event.type === 'game.over') this.onGameOver?.(event.winner);
+    }
     for (const [playerId, connection] of this.connections) {
       const message: ServerMessage = {
         type: 'room.snapshot',

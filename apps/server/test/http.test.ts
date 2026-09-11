@@ -1,11 +1,25 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/index.js';
+import { ProfileStore } from '../src/profile/ProfileStore.js';
 import { RoomRegistry } from '../src/room/RoomRegistry.js';
 
 const servers: Awaited<ReturnType<typeof buildServer>>[] = [];
+const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.close()));
+  await Promise.all(
+    directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+  );
 });
+
+async function testStore(): Promise<ProfileStore> {
+  const directory = await mkdtemp(join(tmpdir(), 'battleships-http-'));
+  directories.push(directory);
+  return new ProfileStore(join(directory, 'players.json'));
+}
 
 describe('HTTP gateway', () => {
   it('reports health without exposing implementation detail', async () => {
@@ -75,5 +89,73 @@ describe('HTTP gateway', () => {
     });
     expect(response.statusCode).toBe(204);
     expect(response.headers['access-control-allow-origin']).toBe('http://192.168.0.211:4173');
+  });
+
+  it('registers a LAN profile, persists its session, and returns the seeded top ten', async () => {
+    const app = await buildServer(undefined, { profileStore: await testStore() });
+    servers.push(app);
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: { username: 'Vlad', password: '1234' },
+    });
+    expect(registered.statusCode).toBe(201);
+    const token = registered.json<{ token: string }>().token;
+    const current = await app.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(current.json()).toEqual({ profile: { username: 'Vlad', points: 0 } });
+    const leaderboard = await app.inject('/api/leaderboard');
+    expect(
+      leaderboard.json<{ entries: readonly { name: string; points: number }[] }>().entries,
+    ).toHaveLength(10);
+    expect(
+      leaderboard.json<{ entries: readonly { name: string; points: number }[] }>().entries[0],
+    ).toEqual({
+      name: 'King of the Sea',
+      points: 1_000,
+      kind: 'seed',
+    });
+  });
+
+  it('awards the registered winner the difficulty score and awards an AI loss', async () => {
+    const app = await buildServer(undefined, { profileStore: await testStore() });
+    servers.push(app);
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: { username: 'Vlad', password: '1234' },
+    });
+    const token = registered.json<{ token: string }>().token;
+    for (let match = 0; match < 3; match += 1) {
+      const result = await app.inject({
+        method: 'POST',
+        url: '/api/scores/ai',
+        headers: { authorization: `Bearer ${token}` },
+        payload: { difficulty: 'hard', winner: 'player' },
+      });
+      expect(result.statusCode).toBe(200);
+    }
+    const aiResult = await app.inject({
+      method: 'POST',
+      url: '/api/scores/ai',
+      payload: { difficulty: 'medium', winner: 'ai' },
+    });
+    expect(aiResult.statusCode).toBe(200);
+    expect(
+      aiResult.json<{ entries: readonly { name: string; points: number }[] }>().entries,
+    ).toContainEqual({
+      name: 'Vlad',
+      points: 12,
+      kind: 'player',
+    });
+    const current = await app.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(current.json()).toEqual({ profile: { username: 'Vlad', points: 12 } });
   });
 });

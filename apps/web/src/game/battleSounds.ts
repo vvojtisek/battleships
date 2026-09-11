@@ -5,8 +5,8 @@ export type BattleSound = 'miss' | 'hit' | 'sunk';
 
 export const SOUND_ASSETS: Readonly<Record<BattleSound, string>> = {
   miss: '/sounds/water-splash.mp3',
-  hit: '/sounds/explosion.mp3',
-  sunk: '/sounds/underwater-explosion.mp3',
+  hit: '/sounds/underwater-explosion.mp3',
+  sunk: '/sounds/explosion.mp3',
 };
 
 const effectDurations: Readonly<Record<BattleSound, number>> = {
@@ -74,10 +74,12 @@ export function soundsForChange(
     next.enemyShots,
     next.enemyHits,
   );
-  if (playerShot) sounds.push(playerShot);
-  if (enemyShot) sounds.push(enemyShot);
-  if (next.playerSunk > previous.playerSunk || next.enemySunk > previous.enemySunk)
-    sounds.push('sunk');
+  const sunk = next.playerSunk > previous.playerSunk || next.enemySunk > previous.enemySunk;
+  if (playerShot === 'hit' && sunk) sounds.push('sunk');
+  else if (playerShot) sounds.push(playerShot);
+  if (enemyShot === 'hit' && sunk) sounds.push('sunk');
+  else if (enemyShot) sounds.push(enemyShot);
+  if (!playerShot && !enemyShot && sunk) sounds.push('sunk');
   return sounds;
 }
 

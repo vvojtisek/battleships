@@ -1,9 +1,11 @@
 import type { ProjectedRoomState } from '@bs/engine';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Battle } from './Battle.js';
 import { FleetPlacement } from './FleetPlacement.js';
+import { authorization, serverRequest, serverUrl } from '../game/lanServer.js';
 import { RemoteTransport, type RemoteEvent } from '../game/RemoteTransport.js';
+import { useAuth } from '../profile/Auth.js';
 
 const NAME_KEY = 'battleships.display-name.v1';
 const tokenKey = (code: string) => `battleships.room-token.${code}`;
@@ -11,13 +13,6 @@ const tokenKey = (code: string) => `battleships.room-token.${code}`;
 interface JoinableRoom {
   readonly code: string;
   readonly creatorName: string;
-}
-
-function serverUrl(): string {
-  const configured = import.meta.env.VITE_SERVER_URL;
-  return typeof configured === 'string'
-    ? configured
-    : `${window.location.protocol}//${window.location.hostname}:3000`;
 }
 
 function loadName(): string {
@@ -67,6 +62,7 @@ function isJoinableRoom(value: unknown): value is JoinableRoom {
 
 export function MultiplayerHome() {
   const navigate = useNavigate();
+  const { profile, token } = useAuth();
   const [name, setName] = useState(loadName);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -74,12 +70,16 @@ export function MultiplayerHome() {
   const [loadingRooms, setLoadingRooms] = useState(true);
 
   useEffect(() => {
+    if (profile) setName(profile.username);
+  }, [profile]);
+
+  useEffect(() => {
     let active = true;
     const controller = new AbortController();
 
     async function loadRooms(): Promise<void> {
       try {
-        const response = await fetch(new URL('/api/rooms', serverUrl()), {
+        const response = await serverRequest('/api/rooms', {
           signal: controller.signal,
         });
         const result: unknown = await response.json();
@@ -114,9 +114,9 @@ export function MultiplayerHome() {
     setCreating(true);
     setError(null);
     try {
-      const response = await fetch(new URL('/api/rooms', serverUrl()), {
+      const response = await serverRequest('/api/rooms', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...authorization(token) },
         body: JSON.stringify({ displayName }),
       });
       const room: unknown = await response.json();
@@ -154,13 +154,18 @@ export function MultiplayerHome() {
       <p className="eyebrow">Private home LAN</p>
       <h1>Play with someone nearby</h1>
       <p>Create a room, or join an available game on your home network.</p>
+      <p>
+        {profile
+          ? `Signed in as ${profile.username}; PvP wins earn 3 points.`
+          : 'Guests can play, but sign in to earn PvP points.'}
+      </p>
       {error && (
         <p className="error" role="alert">
           {error}
         </p>
       )}
       <label>
-        Your name
+        {profile ? 'Player name' : 'Guest name'}
         <input maxLength={24} onChange={(event) => setName(event.target.value)} value={name} />
       </label>
       <div className="room-actions">
@@ -202,6 +207,7 @@ export function MultiplayerHome() {
 
 export function MultiplayerRoom() {
   const navigate = useNavigate();
+  const { profile, token, refresh } = useAuth();
   const { code: rawCode } = useParams();
   const code = rawCode?.toUpperCase() ?? '';
   const [name, setName] = useState(loadName);
@@ -209,7 +215,12 @@ export function MultiplayerRoom() {
   const [status, setStatus] = useState('Connecting to the LAN server…');
   const [error, setError] = useState<string | null>(null);
   const [resumeToken, setResumeToken] = useState(() => loadToken(code));
+  const recordedMatches = useRef(new Set<string>());
   const transport = useMemo(() => new RemoteTransport(serverUrl(), resumeToken), [resumeToken]);
+
+  useEffect(() => {
+    if (profile) setName(profile.username);
+  }, [profile]);
 
   useEffect(() => {
     setResumeToken(loadToken(code));
@@ -245,11 +256,19 @@ export function MultiplayerRoom() {
     };
   }, [code, resumeToken, transport]);
 
+  useEffect(() => {
+    const phase = snapshot?.phase;
+    if (!snapshot || !phase || phase.kind !== 'game_over') return;
+    if (recordedMatches.current.has(snapshot.matchId)) return;
+    recordedMatches.current.add(snapshot.matchId);
+    if (phase.winner === snapshot.you.id && profile) void refresh();
+  }, [profile, refresh, snapshot]);
+
   function join(): void {
     const displayName = name.trim();
     if (!displayName) return setError('Enter your name before joining.');
     saveName(displayName);
-    transport.join(code, displayName);
+    transport.join(code, displayName, token ?? undefined);
     setStatus('Joining room…');
   }
 
@@ -296,6 +315,7 @@ export function MultiplayerRoom() {
       <>
         <nav>
           <Link to="/">Battleships</Link>
+          <Link to="/leaderboard">Top 10</Link>
           <span className="connection-status">{status}</span>
         </nav>
         <main className="room-home">
@@ -316,6 +336,7 @@ export function MultiplayerRoom() {
     <>
       <nav>
         <Link to="/">Battleships</Link>
+        <Link to="/leaderboard">Top 10</Link>
         <span className="room-code">Room {code}</span>
         <span className="connection-status">{status}</span>
       </nav>

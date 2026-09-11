@@ -14,8 +14,8 @@ describe('battle sounds', () => {
   it('maps each outcome to its bundled audio sample', () => {
     expect(SOUND_ASSETS).toEqual({
       miss: '/sounds/water-splash.mp3',
-      hit: '/sounds/explosion.mp3',
-      sunk: '/sounds/underwater-explosion.mp3',
+      hit: '/sounds/underwater-explosion.mp3',
+      sunk: '/sounds/explosion.mp3',
     });
   });
 
@@ -23,7 +23,7 @@ describe('battle sounds', () => {
     expect(soundsForChange(initial, { ...initial, playerShots: 1n })).toEqual(['miss']);
   });
 
-  it('plays a hit and then a sunk sound when a ship is destroyed', () => {
+  it('plays only the sinking impact for the final hit, with no duplicate standard hit', () => {
     expect(
       soundsForChange(initial, {
         ...initial,
@@ -31,7 +31,7 @@ describe('battle sounds', () => {
         playerHits: 1n,
         enemySunk: 1,
       }),
-    ).toEqual(['hit', 'sunk']);
+    ).toEqual(['sunk']);
   });
 
   it('also reacts to an opponent shot on the local fleet', () => {

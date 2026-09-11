@@ -1,4 +1,4 @@
-import { createRoom, playerId, roomId, type Command } from '@bs/engine';
+import { createRoom, playerId, reduce, roomId, type Command, type RoomState } from '@bs/engine';
 import { describe, expect, it } from 'vitest';
 import { RoomActor, type Connection, type ServerMessage } from '../src/index.js';
 
@@ -53,5 +53,37 @@ describe('RoomActor', () => {
     if (latest?.type !== 'room.snapshot') throw new Error('missing snapshot');
     expect(latest.state.opponent).not.toHaveProperty('ships');
     expect(JSON.stringify(latest.state)).not.toContain('carrier');
+  });
+
+  it('reports the winner exactly once when a PvP match ends', () => {
+    let state: RoomState = createRoom({
+      id: roomId('room'),
+      code: 'ABCDEF',
+      creator: alice,
+      displayName: 'Alice',
+      seed: 1,
+      now: 0,
+    });
+    const prepare = (command: Command): void => {
+      const result = reduce(state, command);
+      if (!result.ok) throw new Error(result.detail);
+      state = result.value.state;
+    };
+    prepare({ type: 'room.join', actor: bob, displayName: 'Bob', at: 1 });
+    prepare({ type: 'fleet.random', actor: alice });
+    prepare({ type: 'fleet.random', actor: bob });
+    prepare({ type: 'fleet.commit', actor: alice, at: 2 });
+    prepare({ type: 'fleet.commit', actor: bob, at: 3 });
+    const winners: string[] = [];
+    const actor = new RoomActor(
+      state,
+      () => 10,
+      (winner) => winners.push(winner),
+    );
+
+    actor.submit(bob, { type: 'player.resign', actor: bob }, 'resign-1');
+    actor.submit(bob, { type: 'player.resign', actor: bob }, 'resign-1');
+
+    expect(winners).toEqual(['alice']);
   });
 });

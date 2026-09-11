@@ -25,15 +25,19 @@ interface RegisteredRoom {
   readonly actor: RoomActor;
   readonly creatorName: string;
   readonly tokens: Map<string, { readonly playerId: PlayerId; readonly expiresAt: number }>;
+  readonly profiles: Map<PlayerId, string | undefined>;
 }
+
+type WinnerHandler = (code: string, winner: PlayerId) => void;
 
 /** In-memory room directory. Redis ownership/snapshots are the next deployment slice. */
 export class RoomRegistry {
   private readonly rooms = new Map<string, RegisteredRoom>();
+  private winnerHandler: WinnerHandler | undefined;
 
   public constructor(private readonly now: () => number = Date.now) {}
 
-  public create(displayName: string, now = this.now()): CreatedRoom {
+  public create(displayName: string, profileUsername?: string, now = this.now()): CreatedRoom {
     const code = this.nextCode();
     const creator = playerId(randomUUID());
     const token = this.token();
@@ -46,11 +50,14 @@ export class RoomRegistry {
         seed: randomBytes(4).readUInt32BE(),
         now,
       }),
+      this.now,
+      (winner) => this.winnerHandler?.(code, winner),
     );
     this.rooms.set(code, {
       actor,
       creatorName: displayName,
       tokens: new Map([[token, this.tokenRecord(creator)]]),
+      profiles: new Map([[creator, profileUsername]]),
     });
     return { code, playerId: creator, resumeToken: token };
   }
@@ -84,6 +91,18 @@ export class RoomRegistry {
     const token = this.token();
     room.tokens.set(token, this.tokenRecord(player));
     return token;
+  }
+
+  public setProfile(code: string, player: PlayerId, username: string | undefined): void {
+    this.rooms.get(code)?.profiles.set(player, username);
+  }
+
+  public profileFor(code: string, player: PlayerId): string | undefined {
+    return this.rooms.get(code)?.profiles.get(player);
+  }
+
+  public setWinnerHandler(handler: WinnerHandler): void {
+    this.winnerHandler = handler;
   }
 
   private nextCode(): string {
