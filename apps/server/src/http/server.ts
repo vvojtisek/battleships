@@ -95,6 +95,7 @@ export async function buildServer(
   });
 
   app.get('/healthz', () => ({ status: 'ok' }));
+  app.get('/api/rooms', () => ({ rooms: registry.listJoinable() }));
   app.post('/api/rooms', async (request, reply) => {
     const name = displayName((request.body as { displayName?: unknown } | undefined)?.displayName);
     if (!name)

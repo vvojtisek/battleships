@@ -89,8 +89,10 @@ Properties this buys:
 ## 2.3 Room ownership — ADR-07
 
 Game state lives in the single LAN server process. `POST /api/rooms` creates an actor in its
-in-process registry and returns the room code; joining clients connect directly to that same
-server. There is no directory, proxy, Redis, or cross-instance protocol.
+in-process registry. `GET /api/rooms` returns summaries of one-player lobbies so another trusted
+LAN browser can choose a room by its creator's name; it returns only `{ code, creatorName }`,
+never player IDs, resume tokens, fleets, or game state. Joining clients connect directly to that
+same server. There is no directory, proxy, Redis, or cross-instance protocol.
 
 Active rooms end if that server restarts. This is an intentional tradeoff for a private home
 game; the pure engine and room actor can later gain a local persistence adapter without changing

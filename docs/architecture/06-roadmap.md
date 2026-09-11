@@ -92,7 +92,8 @@ keyboard-only playthrough.
 
 - `apps/server`: Fastify + `ws`, `RoomActor`, connection auth, room registry.
 - `@bs/protocol` Zod schemas as the single validation boundary; `WebSocketTransport`.
-- Room codes, invite URL `/room/:code`, lobby UI, presence.
+- LAN room discovery (creator name and one-tap join), invite URL `/room/:code`, lobby UI,
+  presence.
 - Reconnect + resume tokens + turn/placement/disconnect timers.
 - Rate limiting, message size caps, origin checks
   ([§7.4](./07-testing-security.md#74-input-and-abuse-hardening)).

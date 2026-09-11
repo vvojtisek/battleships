@@ -16,8 +16,14 @@ export interface ResumedPlayer {
   readonly code: string;
 }
 
+export interface JoinableRoom {
+  readonly code: string;
+  readonly creatorName: string;
+}
+
 interface RegisteredRoom {
   readonly actor: RoomActor;
+  readonly creatorName: string;
   readonly tokens: Map<string, { readonly playerId: PlayerId; readonly expiresAt: number }>;
 }
 
@@ -41,12 +47,22 @@ export class RoomRegistry {
         now,
       }),
     );
-    this.rooms.set(code, { actor, tokens: new Map([[token, this.tokenRecord(creator)]]) });
+    this.rooms.set(code, {
+      actor,
+      creatorName: displayName,
+      tokens: new Map([[token, this.tokenRecord(creator)]]),
+    });
     return { code, playerId: creator, resumeToken: token };
   }
 
   public find(code: string): RoomActor | undefined {
     return this.rooms.get(code)?.actor;
+  }
+
+  public listJoinable(): readonly JoinableRoom[] {
+    return Array.from(this.rooms, ([code, room]) => ({ code, room }))
+      .filter(({ room }) => room.actor.isJoinable())
+      .map(({ code, room }) => ({ code, creatorName: room.creatorName }));
   }
 
   public resume(token: string): ResumedPlayer | undefined {

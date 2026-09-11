@@ -217,7 +217,7 @@ Specifics:
 | Large frames | 4 KB cap, enforced before parsing |
 | Compression amplification | `permessage-deflate` **disabled**. Our frames are ~200 bytes; the extension buys nothing and adds a memory-amplification/CPU-DoS surface |
 | Slowloris on upgrade | `conn.hello` must arrive within 5 s of the socket opening, else `close(4408)` |
-| Room-code enumeration | 6-char Crockford base32 = 32⁶ ≈ **1.07 × 10⁹** codes. With ~10⁴ live rooms, a blind guess hits with p ≈ 9 × 10⁻⁶. Join attempts are rate-limited to 10/min/IP, so an attacker averages ~10⁵ minutes per hit. Codes are generated with `crypto.randomBytes`, never `Math.random` |
+| Room discovery | On this private home LAN, one-player lobbies intentionally disclose only creator name and room code through `GET /api/rooms`; no tokens, player IDs, fleets, or in-game rooms are listed. The random code remains a route identifier and direct join attempts are still validated server-side. |
 | Offensive room codes | Crockford base32 omits `I L O U`, which kills most accidental words; a ~200-entry denylist is checked at generation and the code regenerated |
 | Idle room accumulation | Lobby TTL 10 min, in-game idle TTL 30 min, `game_over` TTL 5 min; a sweeper reaps expired actors every 60 s |
 | Memory per instance | `rooms_active` gauge with an admission cap; over the cap, `POST /api/rooms` returns 503 and Fly autoscales |

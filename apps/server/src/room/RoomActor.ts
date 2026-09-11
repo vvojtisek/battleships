@@ -56,6 +56,10 @@ export class RoomActor {
     return this.state.players[player] !== undefined;
   }
 
+  public isJoinable(): boolean {
+    return this.state.phase.kind === 'lobby' && this.state.order.length === 1;
+  }
+
   public submit(from: PlayerId, command: Command, cmdId: string): void {
     if (command.actor !== from)
       throw new Error('command actor must match authenticated connection');
