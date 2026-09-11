@@ -65,12 +65,14 @@ function contrastColor(color: string): string {
 function Landing() {
   const navigate = useNavigate();
   const { active, enterGuest, loading } = useAuth();
+  useEffect(() => {
+    if (active) void navigate('/menu', { replace: true });
+  }, [active, navigate]);
   if (loading) return <main>Restoring player session…</main>;
-  if (active) return <Navigate replace to="/menu" />;
+  if (active) return <main>Opening main menu…</main>;
 
   function playAsGuest(): void {
     enterGuest();
-    void navigate('/menu', { replace: true });
   }
 
   return (
@@ -315,8 +317,12 @@ function RequireActive({ children }: { readonly children: React.ReactNode }) {
 
 function RedirectIfActive({ children }: { readonly children: React.ReactNode }) {
   const { active, loading } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (active) void navigate('/menu', { replace: true });
+  }, [active, navigate]);
   if (loading) return <main>Restoring player session…</main>;
-  return active ? <Navigate replace to="/menu" /> : children;
+  return active ? <main>Opening main menu…</main> : children;
 }
 
 function IdleLayout() {
