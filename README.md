@@ -33,8 +33,13 @@ be port-forwarded or exposed to the public internet.
 For a LAN game, open `/multiplayer`, enter your name, and create a room. The other device opens
 the same page, enters its name, sees the available room with its creator's name, and taps **Join
 game**. Once they join, both players place and confirm their fleets. The browser refreshes the
-available-room list every five seconds; rooms disappear from the list as soon as they have two
-players.
+available-room list every five seconds. A waiting room can be closed by its creator, is removed
+one minute after its creator disconnects, and expires after ten minutes idle. Active games retry a
+brief Wi-Fi interruption automatically; while either player is reconnecting, shots and the
+authoritative 45-second turn timer are paused.
+
+At game over, LAN players can request a rematch in the same room. Both players must accept, after
+which they return to fleet placement and the starting player alternates.
 
 During a battle, bundled audio samples play for misses, hits, and sunk ships. Sound begins only
 after a player gesture and can be disabled with the **Sound on/off** button; the preference stays
@@ -51,7 +56,7 @@ server. Passwords/PINs are salted and hashed; the file does not store the entere
 Open **Sign in or create a profile** to register a 3–24-character name and a 4–64-character PIN or
 password. The session remains active on that browser. Guests can play solo and LAN games, but only
 registered players receive human points. The shared **Top 10** is seeded on first run and is served
-by the LAN host to every device.
+by the LAN host to every device. Profiles also show played games, wins, losses, and win rate.
 
 | Result | Points |
 |---|---:|
@@ -63,6 +68,10 @@ by the LAN host to every device.
 
 Only the ten highest totals are displayed. The ranking is shared by registered players, seeded
 captains, and the three AI opponents.
+
+To enable a host-only **Start new party** control, set `PARTY_ADMIN_PIN` in `.env` before starting
+the server. It requires that PIN and an explicit confirmation; it clears current player and AI
+results while preserving the ten seeded scores.
 
 ## The plan
 

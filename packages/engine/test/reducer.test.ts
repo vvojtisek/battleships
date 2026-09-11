@@ -255,11 +255,13 @@ describe('room reducer', () => {
     ).toMatchObject({ ok: false, code: 'E_ALREADY_FIRED' });
     state = apply(state, { type: 'player.resign', actor: shooter });
     expect(state.phase).toMatchObject({ kind: 'game_over', winner: target, reason: 'forfeit' });
+    const previousMatchId = state.id;
     state = apply(state, { type: 'game.rematch', actor: shooter, accept: false, at: 4_000 });
     expect(state.phase.kind).toBe('game_over');
     state = apply(state, { type: 'game.rematch', actor: shooter, accept: true, at: 4_000 });
     state = apply(state, { type: 'game.rematch', actor: target, accept: true, at: 4_000 });
     expect(state.phase.kind).toBe('placing');
+    expect(state.id).not.toBe(previousMatchId);
     expect(state.players[shooter]?.ships).toEqual([]);
     expect(state.log).toEqual([]);
     expect(reduce(state, { type: 'player.resign', actor: shooter })).toMatchObject({
@@ -281,6 +283,22 @@ describe('room reducer', () => {
     alternate = apply(alternate, { type: 'game.rematch', actor: ONE, accept: true, at: 6_000 });
     alternate = apply(alternate, { type: 'game.rematch', actor: TWO, accept: true, at: 6_000 });
     expect(alternate.phase.kind).toBe('placing');
+  });
+
+  test('pauses shots during a disconnect and resolves an expired turn as a timeout', () => {
+    let state = readyRoom();
+    if (state.phase.kind !== 'in_game') throw new Error('expected game');
+    const current = state.phase.turn;
+    const other = opponentId(state, current) as PlayerId;
+    state = apply(state, { type: 'player.connection', actor: other, online: false, at: 3_000 });
+    expect(projectRoom(state, current, 3_000).opponent.online).toBe(false);
+    expect(
+      reduce(state, { type: 'turn.fire', actor: current, cell: toCell(0, 0), at: 3_001 }),
+    ).toMatchObject({ ok: false, code: 'E_WRONG_PHASE' });
+    state = apply(state, { type: 'player.connection', actor: other, online: true, at: 4_000 });
+    expect(state.phase).toMatchObject({ kind: 'in_game', turnDeadline: 49_000 });
+    state = apply(state, { type: 'player.timeout', actor: current });
+    expect(state.phase).toMatchObject({ kind: 'game_over', winner: other, reason: 'timeout' });
   });
 });
 

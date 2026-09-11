@@ -18,6 +18,7 @@ const MAX_FRAME_BYTES = 4 * 1024;
 export interface ServerOptions {
   readonly allowedOrigins?: readonly string[];
   readonly profileStore?: ProfileStore;
+  readonly partyAdminPin?: string;
 }
 
 interface SocketSession {
@@ -99,8 +100,12 @@ export async function buildServer(
   const profiles =
     options.profileStore ?? new ProfileStore(resolve(process.cwd(), 'data', 'players.json'));
   await profiles.initialize();
-  registry.setWinnerHandler((code, winner) => {
-    void profiles.recordPvpWin(registry.profileFor(code, winner));
+  registry.setWinnerHandler((code, winner, matchId) => {
+    void profiles.recordPvpMatch(
+      registry.profileFor(code, winner),
+      registry.opponentProfileFor(code, winner),
+      matchId,
+    );
   });
   const allowedOrigins = new Set(options.allowedOrigins ?? ['http://localhost:5173']);
   app.addHook('onRequest', async (request, reply) => {
@@ -111,8 +116,11 @@ export async function buildServer(
         return;
       }
       reply.header('access-control-allow-origin', origin);
-      reply.header('access-control-allow-methods', 'POST, OPTIONS');
-      reply.header('access-control-allow-headers', 'content-type, authorization');
+      reply.header('access-control-allow-methods', 'POST, DELETE, OPTIONS');
+      reply.header(
+        'access-control-allow-headers',
+        'content-type, authorization, x-room-resume-token, x-party-admin-pin',
+      );
       reply.header('vary', 'Origin');
     }
     if (request.method === 'OPTIONS') return reply.code(204).send();
@@ -123,6 +131,7 @@ export async function buildServer(
 
   app.get('/healthz', () => ({ status: 'ok' }));
   app.get('/api/leaderboard', () => ({ entries: profiles.leaderboard() }));
+  app.get('/api/party', () => ({ resetEnabled: Boolean(options.partyAdminPin) }));
   app.get('/api/auth/me', (request) => {
     const profile = profiles.activeUser(bearerToken(request.headers.authorization));
     return { profile };
@@ -168,16 +177,22 @@ export async function buildServer(
     return reply.code(204).send();
   });
   app.post('/api/scores/ai', async (request, reply) => {
-    const body = request.body as { difficulty?: unknown; winner?: unknown } | undefined;
-    if (!validDifficulty(body?.difficulty) || !validMatchWinner(body.winner))
+    const body = request.body as
+      { difficulty?: unknown; winner?: unknown; matchId?: unknown } | undefined;
+    if (
+      !validDifficulty(body?.difficulty) ||
+      !validMatchWinner(body.winner) ||
+      typeof body.matchId !== 'string' ||
+      !/^[A-Za-z0-9_-]{8,160}$/u.test(body.matchId)
+    )
       return reply
         .code(400)
-        .send({ code: 'E_MALFORMED', detail: 'difficulty and winner are required' });
+        .send({ code: 'E_MALFORMED', detail: 'difficulty, winner and matchId are required' });
     const profile = profiles.activeUser(bearerToken(request.headers.authorization));
     if (body.winner === 'player' && !profile)
       return reply.code(401).send({ code: 'E_AUTH', detail: 'Sign in to collect player points.' });
     return reply.send({
-      entries: await profiles.recordAiMatch(body.difficulty, body.winner, profile),
+      entries: await profiles.recordAiMatch(body.difficulty, body.winner, profile, body.matchId),
     });
   });
   app.get('/api/rooms', () => ({ rooms: registry.listJoinable() }));
@@ -190,6 +205,23 @@ export async function buildServer(
     return reply
       .code(201)
       .send({ code: room.code, playerId: room.playerId, resumeToken: room.resumeToken });
+  });
+  app.delete('/api/rooms/:code', async (request, reply) => {
+    const code = (request.params as { code?: unknown }).code;
+    const resumeToken = request.headers['x-room-resume-token'];
+    if (typeof code !== 'string' || typeof resumeToken !== 'string') return reply.code(400).send();
+    return registry.closeLobby(code.toUpperCase(), resumeToken)
+      ? reply.code(204).send()
+      : reply.code(404).send();
+  });
+  app.post('/api/party/reset', async (request, reply) => {
+    if (!options.partyAdminPin) return reply.code(404).send();
+    if (request.headers['x-party-admin-pin'] !== options.partyAdminPin)
+      return reply
+        .code(403)
+        .send({ code: 'E_FORBIDDEN', detail: 'The host party PIN is incorrect.' });
+    await profiles.startNewParty();
+    return reply.code(204).send();
   });
 
   app.get('/ws', { websocket: true }, (socket, request) => {
@@ -221,7 +253,10 @@ export async function buildServer(
     });
     socket.on('close', () => {
       clearTimeout(helloTimeout);
-      if (session.playerId && session.code) registry.find(session.code)?.detach(session.playerId);
+      if (session.playerId && session.code) {
+        registry.find(session.code)?.detach(session.playerId);
+        registry.playerDisconnected(session.code, session.playerId);
+      }
     });
   });
   return app;
@@ -245,6 +280,7 @@ function handleEnvelope(
     session.code = resumed.code;
     const connection: Connection = { playerId: resumed.playerId, send };
     resumed.actor.attach(connection);
+    registry.playerConnected(resumed.code, resumed.playerId);
     return send({ type: 'conn.ready', playerId: resumed.playerId, roomCode: resumed.code });
   }
   if (!session.hello) return close(4408, 'hello required');
@@ -296,6 +332,7 @@ function handleEnvelope(
     session.code = envelope.payload.code;
     registry.setProfile(session.code, player, profile?.username);
     actor.attach({ playerId: player, send });
+    registry.playerConnected(session.code, player);
     return send({
       type: 'conn.ready',
       playerId: player,

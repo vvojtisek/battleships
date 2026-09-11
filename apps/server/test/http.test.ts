@@ -23,7 +23,7 @@ async function testStore(): Promise<ProfileStore> {
 
 describe('HTTP gateway', () => {
   it('reports health without exposing implementation detail', async () => {
-    const app = await buildServer();
+    const app = await buildServer(undefined, { profileStore: await testStore() });
     servers.push(app);
     const response = await app.inject('/healthz');
     expect(response.statusCode).toBe(200);
@@ -31,7 +31,7 @@ describe('HTTP gateway', () => {
   });
 
   it('creates a room with an opaque resume token', async () => {
-    const app = await buildServer();
+    const app = await buildServer(undefined, { profileStore: await testStore() });
     servers.push(app);
     const response = await app.inject({
       method: 'POST',
@@ -49,7 +49,7 @@ describe('HTTP gateway', () => {
   it('lists joinable LAN rooms with their creator names only', async () => {
     const registry = new RoomRegistry();
     registry.create('Ada');
-    const app = await buildServer(registry);
+    const app = await buildServer(registry, { profileStore: await testStore() });
     servers.push(app);
 
     const response = await app.inject({ method: 'GET', url: '/api/rooms' });
@@ -60,6 +60,7 @@ describe('HTTP gateway', () => {
         {
           code: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{6}$/),
           creatorName: 'Ada',
+          createdAt: expect.any(Number),
         },
       ],
     });
@@ -68,7 +69,7 @@ describe('HTTP gateway', () => {
   });
 
   it('rejects malformed room creation input', async () => {
-    const app = await buildServer();
+    const app = await buildServer(undefined, { profileStore: await testStore() });
     servers.push(app);
     const response = await app.inject({
       method: 'POST',
@@ -80,7 +81,10 @@ describe('HTTP gateway', () => {
   });
 
   it('permits room creation from the configured LAN web origin', async () => {
-    const app = await buildServer(undefined, { allowedOrigins: ['http://192.168.0.211:4173'] });
+    const app = await buildServer(undefined, {
+      allowedOrigins: ['http://192.168.0.211:4173'],
+      profileStore: await testStore(),
+    });
     servers.push(app);
     const response = await app.inject({
       method: 'OPTIONS',
@@ -106,7 +110,9 @@ describe('HTTP gateway', () => {
       url: '/api/auth/me',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(current.json()).toEqual({ profile: { username: 'Vlad', points: 0 } });
+    expect(current.json()).toEqual({
+      profile: { username: 'Vlad', points: 0, played: 0, wins: 0, losses: 0 },
+    });
     const leaderboard = await app.inject('/api/leaderboard');
     expect(
       leaderboard.json<{ entries: readonly { name: string; points: number }[] }>().entries,
@@ -134,14 +140,14 @@ describe('HTTP gateway', () => {
         method: 'POST',
         url: '/api/scores/ai',
         headers: { authorization: `Bearer ${token}` },
-        payload: { difficulty: 'hard', winner: 'player' },
+        payload: { difficulty: 'hard', winner: 'player', matchId: `hard-match-${match}` },
       });
       expect(result.statusCode).toBe(200);
     }
     const aiResult = await app.inject({
       method: 'POST',
       url: '/api/scores/ai',
-      payload: { difficulty: 'medium', winner: 'ai' },
+      payload: { difficulty: 'medium', winner: 'ai', matchId: 'medium-ai-match' },
     });
     expect(aiResult.statusCode).toBe(200);
     expect(
@@ -156,6 +162,8 @@ describe('HTTP gateway', () => {
       url: '/api/auth/me',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(current.json()).toEqual({ profile: { username: 'Vlad', points: 12 } });
+    expect(current.json()).toEqual({
+      profile: { username: 'Vlad', points: 12, played: 3, wins: 3, losses: 0 },
+    });
   });
 });

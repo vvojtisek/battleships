@@ -40,22 +40,34 @@ describe('ProfileStore', () => {
   it('registers and authenticates a profile without storing its PIN in plain text', async () => {
     const { store: profileStore, file } = await store();
     const registered = await profileStore.register('Vlad', '1234');
-    expect(registered.profile).toEqual({ username: 'Vlad', points: 0 });
+    expect(registered.profile).toEqual({
+      username: 'Vlad',
+      points: 0,
+      played: 0,
+      wins: 0,
+      losses: 0,
+    });
     await expect(profileStore.register('vlad', '1234')).rejects.toMatchObject<ProfileStoreError>({
       code: 'USERNAME_TAKEN',
     });
     const loggedIn = await profileStore.login('VLAD', '1234');
-    expect(profileStore.activeUser(loggedIn.token)).toEqual({ username: 'Vlad', points: 0 });
+    expect(profileStore.activeUser(loggedIn.token)).toEqual({
+      username: 'Vlad',
+      points: 0,
+      played: 0,
+      wins: 0,
+      losses: 0,
+    });
     expect(await readFile(file, 'utf8')).not.toContain('"password": "1234"');
   });
 
   it('awards player and AI wins and keeps only the ten highest entries visible', async () => {
     const { store: profileStore } = await store();
     const { profile } = await profileStore.register('Vlad', '1234');
-    await profileStore.recordAiMatch('hard', 'player', profile);
-    await profileStore.recordAiMatch('hard', 'player', profile);
-    await profileStore.recordAiMatch('hard', 'player', profile);
-    await profileStore.recordAiMatch('medium', 'ai', profile);
+    await profileStore.recordAiMatch('hard', 'player', profile, 'match-one');
+    await profileStore.recordAiMatch('hard', 'player', profile, 'match-two');
+    await profileStore.recordAiMatch('hard', 'player', profile, 'match-three');
+    await profileStore.recordAiMatch('medium', 'ai', profile, 'match-four');
     expect(profileStore.leaderboard()).toContainEqual({ name: 'Vlad', points: 12, kind: 'player' });
     expect(profileStore.leaderboard()).not.toContainEqual({
       name: 'Camille Bleu',
@@ -65,6 +77,23 @@ describe('ProfileStore', () => {
     expect(profileStore.activeUser((await profileStore.login('Vlad', '1234')).token)).toEqual({
       username: 'Vlad',
       points: 12,
+      played: 4,
+      wins: 3,
+      losses: 1,
     });
+  });
+
+  it('records each match id only once', async () => {
+    const { store: profileStore } = await store();
+    const { profile } = await profileStore.register('Vlad', '1234');
+    await profileStore.recordAiMatch('hard', 'player', profile, 'same-match');
+    await profileStore.recordAiMatch('hard', 'player', profile, 'same-match');
+    expect(profileStore.activeUser((await profileStore.login('Vlad', '1234')).token)).toMatchObject(
+      {
+        points: 4,
+        played: 1,
+        wins: 1,
+      },
+    );
   });
 });

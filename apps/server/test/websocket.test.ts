@@ -1,12 +1,26 @@
 import type { AddressInfo } from 'node:net';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import WebSocket from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../src/index.js';
+import { ProfileStore } from '../src/profile/ProfileStore.js';
 
 const apps: Awaited<ReturnType<typeof buildServer>>[] = [];
+const directories: string[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
+  await Promise.all(
+    directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+  );
 });
+
+async function testStore(): Promise<ProfileStore> {
+  const directory = await mkdtemp(join(tmpdir(), 'battleships-websocket-'));
+  directories.push(directory);
+  return new ProfileStore(join(directory, 'players.json'));
+}
 
 function receive(url: string, frames: readonly object[]): Promise<unknown[]> {
   return new Promise((resolve, reject) => {
@@ -40,7 +54,7 @@ function closeCode(url: string, origin: string): Promise<number> {
 
 describe('WebSocket gateway', () => {
   it('resumes a created room and returns only its projected snapshot', async () => {
-    const app = await buildServer();
+    const app = await buildServer(undefined, { profileStore: await testStore() });
     apps.push(app);
     const created = await app.inject({
       method: 'POST',
@@ -66,7 +80,7 @@ describe('WebSocket gateway', () => {
   });
 
   it('lets a second authenticated socket join without disclosing fleet cells', async () => {
-    const app = await buildServer();
+    const app = await buildServer(undefined, { profileStore: await testStore() });
     apps.push(app);
     const created = await app.inject({
       method: 'POST',
@@ -109,7 +123,7 @@ describe('WebSocket gateway', () => {
   });
 
   it('rejects browser sockets from an untrusted origin', async () => {
-    const app = await buildServer();
+    const app = await buildServer(undefined, { profileStore: await testStore() });
     apps.push(app);
     await app.listen({ host: '127.0.0.1', port: 0 });
     const { port } = app.server.address() as AddressInfo;

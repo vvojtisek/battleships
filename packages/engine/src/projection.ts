@@ -1,5 +1,6 @@
 import { cellsOf, hex } from './board.js';
 import type { RuleSet, ShipKind } from './ships.js';
+import type { ShotRecord } from './state.js';
 import { opponentOf, type Phase, type PlayerId, type RoomState } from './state.js';
 
 export interface OwnShip {
@@ -22,6 +23,7 @@ export interface ProjectedRoomState {
     readonly ships: readonly OwnShip[];
     readonly incoming: string;
     readonly committed: boolean;
+    readonly rematch: boolean;
   };
   readonly opponent: {
     readonly id: PlayerId | null;
@@ -31,9 +33,11 @@ export interface ProjectedRoomState {
     readonly shotsFired: string;
     readonly shotsHit: string;
     readonly sunk: readonly ShipKind[];
+    readonly rematch: boolean;
   };
   readonly seq: number;
   readonly serverTime: number;
+  readonly latestShot?: ShotRecord;
   readonly reveal?: Readonly<Record<PlayerId, readonly OwnShip[]>>;
 }
 
@@ -65,6 +69,7 @@ export function projectRoom(
         sunk: other.ships
           .filter((ship) => (ship.mask & other.incoming) === ship.mask)
           .map(({ kind }) => kind),
+        rematch: other.rematch,
       }
     : {
         id: null,
@@ -74,6 +79,7 @@ export function projectRoom(
         shotsFired: '0',
         shotsHit: '0',
         sunk: [],
+        rematch: false,
       };
   const base: ProjectedRoomState = {
     matchId: state.id,
@@ -86,10 +92,12 @@ export function projectRoom(
       ships: me.ships.map(toOwnShip),
       incoming: hex(me.incoming),
       committed: me.committed,
+      rematch: me.rematch,
     },
     opponent,
     seq: state.seq,
     serverTime,
+    ...(state.log.length > 0 ? { latestShot: state.log[state.log.length - 1]! } : {}),
   };
   if (state.phase.kind !== 'game_over') return base;
   const reveal = Object.fromEntries(

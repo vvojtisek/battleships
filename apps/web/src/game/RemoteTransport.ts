@@ -17,7 +17,8 @@ export type RemoteEvent =
       readonly detail: string;
       readonly cmdId?: string;
     }
-  | { readonly type: 'connection.closed'; readonly detail: string };
+  | { readonly type: 'connection.closed'; readonly detail: string }
+  | { readonly type: 'connection.reconnecting'; readonly attempt: number };
 
 function commandId(): string {
   return Array.from(
@@ -35,6 +36,9 @@ function websocketUrl(serverUrl: string): string {
 export class RemoteTransport {
   private socket: WebSocket | null = null;
   private readonly handlers = new Set<(event: RemoteEvent) => void>();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
+  private closedByOwner = false;
 
   public constructor(
     private readonly serverUrl: string,
@@ -42,10 +46,17 @@ export class RemoteTransport {
   ) {}
 
   public connect(): void {
+    this.closedByOwner = false;
+    this.clearReconnectTimer();
     this.socket?.close();
+    this.openSocket();
+  }
+
+  private openSocket(): void {
     const socket = new WebSocket(websocketUrl(this.serverUrl));
     this.socket = socket;
     socket.addEventListener('open', () => {
+      this.reconnectAttempt = 0;
       this.sendEnvelope('conn.hello', {
         clientVersion: 'battleships-lan',
         ...(this.resumeToken ? { resumeToken: this.resumeToken } : {}),
@@ -69,7 +80,8 @@ export class RemoteTransport {
     socket.addEventListener('close', (event) => {
       if (this.socket === socket) {
         this.socket = null;
-        this.emit({ type: 'connection.closed', detail: event.reason || 'Connection closed.' });
+        if (this.closedByOwner) return;
+        this.scheduleReconnect(event.reason || 'Connection closed.');
       }
     });
   }
@@ -116,9 +128,30 @@ export class RemoteTransport {
   }
 
   public close(): void {
+    this.closedByOwner = true;
+    this.clearReconnectTimer();
     this.socket?.close();
     this.socket = null;
     this.handlers.clear();
+  }
+
+  private scheduleReconnect(detail: string): void {
+    if (this.reconnectAttempt >= 6) {
+      this.emit({ type: 'connection.closed', detail });
+      return;
+    }
+    this.reconnectAttempt += 1;
+    this.emit({ type: 'connection.reconnecting', attempt: this.reconnectAttempt });
+    const delay = Math.min(8_000, 500 * 2 ** (this.reconnectAttempt - 1));
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.closedByOwner) this.openSocket();
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   private emit(event: RemoteEvent): void {

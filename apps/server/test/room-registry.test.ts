@@ -16,7 +16,9 @@ describe('RoomRegistry', () => {
     const registry = new RoomRegistry();
     const room = registry.create('Ada');
 
-    expect(registry.listJoinable()).toEqual([{ code: room.code, creatorName: 'Ada' }]);
+    expect(registry.listJoinable()).toEqual([
+      { code: room.code, creatorName: 'Ada', createdAt: expect.any(Number) },
+    ]);
 
     registry
       .find(room.code)
@@ -27,5 +29,14 @@ describe('RoomRegistry', () => {
       );
 
     expect(registry.listJoinable()).toEqual([]);
+  });
+
+  it('removes an abandoned waiting room after ten minutes', () => {
+    let now = 0;
+    const registry = new RoomRegistry(() => now);
+    const room = registry.create('Ada');
+    now = 10 * 60 * 1_000;
+    expect(registry.listJoinable()).toEqual([]);
+    expect(registry.find(room.code)).toBeUndefined();
   });
 });

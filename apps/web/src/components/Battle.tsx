@@ -1,4 +1,10 @@
-import { label as cellLabel, popcount, type Cell, type ProjectedRoomState } from '@bs/engine';
+import {
+  FLEET_SPEC,
+  label as cellLabel,
+  popcount,
+  type Cell,
+  type ProjectedRoomState,
+} from '@bs/engine';
 import { useEffect, useState } from 'react';
 import { Board } from './Board.js';
 import { useBattleSounds } from '../game/battleSounds.js';
@@ -13,9 +19,12 @@ interface Props {
   readonly playerPoints?: number;
   readonly opponentName?: string;
   readonly newGameLabel?: string;
+  readonly onChooseDifficulty?: () => void;
+  readonly onRematch?: () => void;
 }
 
 const SOUND_KEY = 'battleships.sound-effects.v1';
+const CONFIRM_SHOTS_KEY = 'battleships.confirm-touch-shots.v1';
 
 function loadSoundPreference(): boolean {
   try {
@@ -23,6 +32,18 @@ function loadSoundPreference(): boolean {
   } catch {
     return true;
   }
+}
+
+function loadConfirmShotsPreference(): boolean {
+  try {
+    return localStorage.getItem(CONFIRM_SHOTS_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function shipName(kind: string): string {
+  return `${kind[0]!.toUpperCase()}${kind.slice(1)}`;
 }
 
 function useCompactBattleLayout(): boolean {
@@ -48,11 +69,15 @@ export function Battle({
   playerPoints,
   opponentName = 'Computer',
   newGameLabel = 'Play again',
+  onChooseDifficulty,
+  onRematch,
 }: Props) {
   const compact = useCompactBattleLayout();
   const [boardView, setBoardView] = useState<'enemy' | 'fleet'>('enemy');
   const [target, setTarget] = useState<Cell | null>(null);
   const [soundsEnabled, setSoundsEnabled] = useState(loadSoundPreference);
+  const [confirmShots, setConfirmShots] = useState(loadConfirmShotsPreference);
+  const [now, setNow] = useState(Date.now());
   const ownFleet = snapshot.you.ships.reduce(
     (mask, ship) => ship.cells.reduce((value, cell) => value | (1n << BigInt(cell)), mask),
     0n,
@@ -62,10 +87,17 @@ export function Battle({
   const opponentHits = BigInt(`0x${snapshot.opponent.shotsHit}`);
   const gameOver = snapshot.phase.kind === 'game_over';
   const yourTurn = snapshot.phase.kind === 'in_game' && snapshot.phase.turn === snapshot.you.id;
+  const opponentDisconnected = Boolean(snapshot.opponent.id && !snapshot.opponent.online);
   const shots = popcount(opponentShots);
   const hits = popcount(opponentHits);
   const accuracy = shots === 0 ? 0 : Math.round((hits / shots) * 100);
   const shipsRemaining = 5 - snapshot.opponent.sunk.length;
+  const latestShot = snapshot.latestShot;
+  const latestShotByYou = latestShot?.by === snapshot.you.id;
+  const turnSeconds =
+    snapshot.phase.kind === 'in_game'
+      ? Math.max(0, Math.ceil((snapshot.phase.turnDeadline - now) / 1_000))
+      : null;
 
   useBattleSounds(snapshot, soundsEnabled);
 
@@ -73,17 +105,46 @@ export function Battle({
     if (!compact || !yourTurn || gameOver) setTarget(null);
   }, [compact, gameOver, yourTurn]);
 
+  useEffect(() => {
+    if (snapshot.phase.kind !== 'in_game') return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [snapshot.phase.kind, snapshot.phase.kind === 'in_game' ? snapshot.phase.turnDeadline : 0]);
+
   function fire(cell: Cell): void {
     send({ type: 'turn.fire', cell, at: Date.now() });
   }
 
   function aimOrFire(cell: Cell): void {
-    if (compact) {
+    if (compact && confirmShots) {
       setBoardView('enemy');
       setTarget(cell);
       return;
     }
     fire(cell);
+  }
+
+  function toggleShotConfirmation(): void {
+    setConfirmShots((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(CONFIRM_SHOTS_KEY, next ? 'on' : 'off');
+      } catch {
+        // Touch confirmation remains usable when browser storage is unavailable.
+      }
+      return next;
+    });
+  }
+
+  function latestAction(): string | null {
+    if (!latestShot) return null;
+    const actor = latestShotByYou ? 'You' : opponentName;
+    const result =
+      latestShot.outcome === 'sunk'
+        ? `sank ${latestShotByYou ? 'an enemy' : 'your'} ${shipName(latestShot.shipKind ?? 'ship')}`
+        : latestShot.outcome;
+    return `${actor} fired at ${cellLabel(latestShot.cell)} — ${result}.`;
   }
 
   function confirmTarget(): void {
@@ -113,14 +174,24 @@ export function Battle({
               ? snapshot.phase.winner === snapshot.you.id
                 ? 'You won'
                 : `${opponentName} won`
-              : yourTurn
-                ? 'Your turn'
-                : `${opponentName} is thinking…`}
+              : opponentDisconnected
+                ? `${opponentName} is reconnecting…`
+                : yourTurn
+                  ? 'Your turn'
+                  : `${opponentName} is thinking…`}
           </h1>
           <p>
             {gameOver
-              ? `${snapshot.opponent.sunk.length} enemy ships sunk.`
-              : 'One shot per turn. Hits do not grant an extra shot.'}
+              ? `${snapshot.opponent.sunk.length} enemy ships sunk. ${
+                  snapshot.phase.reason === 'forfeit' ? 'The match ended by surrender.' : ''
+                }`
+              : opponentDisconnected
+                ? 'The match is paused for up to two minutes while the player reconnects.'
+                : snapshot.phase.kind === 'in_game' &&
+                    snapshot.phase.turnNo === 1 &&
+                    latestShot === undefined
+                  ? `${yourTurn ? 'You fire first.' : `${opponentName} fires first.`} One shot per turn.`
+                  : 'One shot per turn. Hits do not grant an extra shot.'}
           </p>
         </div>
         <div className="battle-actions">
@@ -133,12 +204,43 @@ export function Battle({
             Sound {soundsEnabled ? 'on' : 'off'}
           </button>
           {gameOver && (
-            <button onClick={onNewGame} type="button">
-              {newGameLabel}
-            </button>
+            <>
+              {onRematch && (
+                <button disabled={snapshot.you.rematch} onClick={onRematch} type="button">
+                  {snapshot.you.rematch
+                    ? 'Rematch requested'
+                    : snapshot.opponent.rematch
+                      ? 'Accept rematch'
+                      : 'Request rematch'}
+                </button>
+              )}
+              <button onClick={onNewGame} type="button">
+                {newGameLabel}
+              </button>
+              {onChooseDifficulty && (
+                <button onClick={onChooseDifficulty} type="button">
+                  Choose difficulty
+                </button>
+              )}
+            </>
           )}
         </div>
       </header>
+      {difficulty && (
+        <p className="match-context">
+          Opponent: {opponentName} · {shipName(difficulty)} AI
+        </p>
+      )}
+      {turnSeconds !== null && !gameOver && !opponentDisconnected && (
+        <p aria-live="polite" className="turn-timer">
+          Turn timer: {turnSeconds}s
+        </p>
+      )}
+      {latestAction() && (
+        <p aria-live="polite" className="recent-action">
+          {latestAction()}
+        </p>
+      )}
       <section aria-label="Battle statistics" className="battle-stats">
         <div>
           <span>Shots</span>
@@ -163,6 +265,17 @@ export function Battle({
           </div>
         )}
       </section>
+      <section aria-label="Enemy fleet status" className="fleet-status">
+        <h2>Enemy fleet status</h2>
+        <ul>
+          {FLEET_SPEC.map((ship) => (
+            <li key={ship.kind}>
+              <span>{shipName(ship.kind)}</span>
+              <strong>{snapshot.opponent.sunk.includes(ship.kind) ? 'Sunk' : 'Afloat'}</strong>
+            </li>
+          ))}
+        </ul>
+      </section>
       {compact && (
         <>
           <div aria-label="Choose board" className="board-switch" role="group">
@@ -175,32 +288,50 @@ export function Battle({
             </button>
             <button
               aria-pressed={boardView === 'fleet'}
+              className={
+                !latestShotByYou && latestShot?.outcome !== 'miss'
+                  ? 'fleet-under-attack'
+                  : undefined
+              }
               onClick={() => setBoardView('fleet')}
               type="button"
             >
               Your fleet
             </button>
           </div>
-          {yourTurn && !gameOver && (
-            <p className="touch-shot-hint">Tap a square, then confirm your shot.</p>
+          {yourTurn && !gameOver && !opponentDisconnected && (
+            <div className="touch-shot-options">
+              <p className="touch-shot-hint">
+                {confirmShots ? 'Tap a square, then confirm your shot.' : 'Tap a square to fire.'}
+              </p>
+              <label>
+                <input checked={confirmShots} onChange={toggleShotConfirmation} type="checkbox" />
+                Confirm each touch shot
+              </label>
+            </div>
           )}
         </>
       )}
-      {compact && target !== null && yourTurn && !gameOver && (
-        <section aria-live="polite" className="shot-confirmation">
-          <p>
-            Target selected: <strong>{cellLabel(target)}</strong>
-          </p>
-          <div>
-            <button className="fire-target" onClick={confirmTarget} type="button">
-              Fire at {cellLabel(target)}
-            </button>
-            <button onClick={() => setTarget(null)} type="button">
-              Choose again
-            </button>
-          </div>
-        </section>
-      )}
+      {compact &&
+        confirmShots &&
+        target !== null &&
+        yourTurn &&
+        !gameOver &&
+        !opponentDisconnected && (
+          <section aria-live="polite" className="shot-confirmation">
+            <p>
+              Target selected: <strong>{cellLabel(target)}</strong>
+            </p>
+            <div>
+              <button className="fire-target" onClick={confirmTarget} type="button">
+                Fire at {cellLabel(target)}
+              </button>
+              <button onClick={() => setTarget(null)} type="button">
+                Choose again
+              </button>
+            </div>
+          </section>
+        )}
       <div className={`boards${compact ? ` compact-${boardView}` : ''}`}>
         <div className="fleet-board">
           <h2>Your fleet</h2>
@@ -218,7 +349,7 @@ export function Battle({
             label="Enemy waters board"
             shots={opponentShots}
             hits={opponentHits}
-            disabled={!yourTurn || gameOver}
+            disabled={!yourTurn || gameOver || opponentDisconnected}
             onCell={aimOrFire}
             selectedCell={target}
           />

@@ -23,6 +23,7 @@ function isLeaderboardEntry(value: unknown): value is LeaderboardEntry {
 }
 
 export function Leaderboard() {
+  const { profile } = useAuth();
   const [entries, setEntries] = useState<readonly LeaderboardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,21 +67,29 @@ export function Leaderboard() {
       ) : (
         <ol className="leaderboard-list">
           {entries.map((entry) => (
-            <li key={`${entry.kind}-${entry.name}`}>
+            <li
+              className={entry.kind === 'ai' ? 'leaderboard-ai' : undefined}
+              key={`${entry.kind}-${entry.name}`}
+              {...(profile?.username === entry.name ? { 'data-active-player': 'true' } : {})}
+            >
               <span className="leaderboard-rank" />
-              <strong>{entry.name}</strong>
+              <strong>
+                {entry.name} {entry.kind === 'ai' && <small>AI</small>}
+              </strong>
               <span>{entry.points} pts</span>
             </li>
           ))}
         </ol>
       )}
-      <Link to="/play">Play against the computer</Link>
+      <p className="leaderboard-note">
+        Ties are ordered alphabetically. Your active profile is highlighted.
+      </p>
     </main>
   );
 }
 
-export function ProfileView() {
-  const { profile, loading, authenticate, logout } = useAuth();
+export function AuthScreen() {
+  const { authenticate } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -100,9 +109,6 @@ export function ProfileView() {
       setSubmitting(false);
     }
   }
-
-  if (loading) return <main>Loading profile…</main>;
-  if (profile) return <SignedInProfile profile={profile} onLogout={() => void logout()} />;
 
   return (
     <main className="profile-page">
@@ -153,13 +159,16 @@ export function ProfileView() {
   );
 }
 
-function SignedInProfile({
-  profile,
-  onLogout,
-}: {
-  readonly profile: Profile;
-  readonly onLogout: () => void;
-}) {
+export function ProfileView() {
+  const { profile, guest, loading } = useAuth();
+  if (loading) return <main>Loading profile…</main>;
+  if (guest) return <GuestProfile />;
+  if (profile) return <SignedInProfile profile={profile} />;
+  return null;
+}
+
+function SignedInProfile({ profile }: { readonly profile: Profile }) {
+  const { refresh } = useAuth();
   return (
     <main className="profile-page">
       <p className="eyebrow">Signed in</p>
@@ -168,17 +177,125 @@ function SignedInProfile({
         <span>Career points</span>
         <strong>{profile.points}</strong>
       </div>
+      <dl className="profile-stats" aria-label="Match statistics">
+        <div>
+          <dt>Played</dt>
+          <dd>{profile.played}</dd>
+        </div>
+        <div>
+          <dt>Wins</dt>
+          <dd>{profile.wins}</dd>
+        </div>
+        <div>
+          <dt>Losses</dt>
+          <dd>{profile.losses}</dd>
+        </div>
+        <div>
+          <dt>Win rate</dt>
+          <dd>
+            {profile.played === 0 ? '—' : `${Math.round((profile.wins / profile.played) * 100)}%`}
+          </dd>
+        </div>
+      </dl>
       <p>
         Your points are stored on this LAN server and appear in the shared top 10 when you rank.
       </p>
       <div className="button-row">
-        <Link className="primary-link" to="/play">
+        <Link className="primary-link" to="/single-player">
           Play now
         </Link>
-        <button onClick={onLogout} type="button">
-          Log out
-        </button>
       </div>
+      <HostPartyControls onReset={refresh} />
+    </main>
+  );
+}
+
+function HostPartyControls({ onReset }: { readonly onReset: () => Promise<void> }) {
+  const [enabled, setEnabled] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void serverRequest('/api/party', { signal: controller.signal })
+      .then(async (response) => {
+        const result: unknown = await response.json();
+        return result;
+      })
+      .then((result: unknown) => {
+        if (result && typeof result === 'object' && 'resetEnabled' in result)
+          setEnabled(result.resetEnabled === true);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  if (!enabled) return null;
+
+  async function reset(): Promise<void> {
+    setStatus(null);
+    const response = await serverRequest('/api/party/reset', {
+      method: 'POST',
+      headers: { 'x-party-admin-pin': pin },
+    });
+    if (!response.ok) {
+      setStatus('The host party PIN is incorrect.');
+      return;
+    }
+    setPin('');
+    setConfirmed(false);
+    setStatus(
+      'New party started. Player and AI results were cleared; historic seed scores remain.',
+    );
+    await onReset();
+  }
+
+  return (
+    <section className="party-controls">
+      <h2>Host controls</h2>
+      <p>Start a new party without changing the historic seed scores.</p>
+      <label>
+        Host party PIN
+        <input onChange={(event) => setPin(event.target.value)} type="password" value={pin} />
+      </label>
+      <label className="check-label">
+        <input
+          checked={confirmed}
+          onChange={(event) => setConfirmed(event.target.checked)}
+          type="checkbox"
+        />
+        I understand this clears current player and AI results.
+      </label>
+      <button
+        className="danger-button"
+        disabled={!confirmed || !pin}
+        onClick={() => void reset()}
+        type="button"
+      >
+        Start new party
+      </button>
+      {status && <p role="status">{status}</p>}
+    </section>
+  );
+}
+
+function GuestProfile() {
+  return (
+    <main className="profile-page">
+      <p className="eyebrow">Guest session</p>
+      <h1>Guest captain</h1>
+      <div className="profile-points">
+        <span>Career points</span>
+        <strong>Not tracked</strong>
+      </div>
+      <p>
+        You can play solo and LAN matches. To earn a permanent place on the shared leaderboard, log
+        out and create or sign in to a profile.
+      </p>
+      <Link className="primary-link" to="/single-player">
+        Play now
+      </Link>
     </main>
   );
 }

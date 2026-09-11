@@ -6,6 +6,7 @@ import type { Direction, ShipKind } from './ships.js';
 import {
   emptyPlayer,
   opponentId,
+  roomId,
   type Phase,
   type PlayerId,
   type PlayerState,
@@ -39,6 +40,14 @@ export type Command =
       readonly at: number;
     }
   | { readonly type: 'player.resign'; readonly actor: PlayerId }
+  | { readonly type: 'player.timeout'; readonly actor: PlayerId }
+  | {
+      /** Server-only connection state used to pause a LAN match during a brief Wi-Fi dropout. */
+      readonly type: 'player.connection';
+      readonly actor: PlayerId;
+      readonly online: boolean;
+      readonly at: number;
+    }
   | {
       readonly type: 'game.rematch';
       readonly actor: PlayerId;
@@ -61,6 +70,7 @@ export type EngineEvent =
   | { readonly type: 'fleet.committed'; readonly playerId: PlayerId }
   | { readonly type: 'game.started'; readonly firstTurn: PlayerId }
   | { readonly type: 'shot.result'; readonly shot: ShotRecord }
+  | { readonly type: 'player.connection'; readonly playerId: PlayerId; readonly online: boolean }
   | {
       readonly type: 'ship.sunk';
       readonly playerId: PlayerId;
@@ -146,6 +156,26 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
   const player = requirePlayer(state, command.actor);
   if (!player) return err('E_UNKNOWN_PLAYER', 'actor is not in this room');
 
+  if (command.type === 'player.connection') {
+    if (player.online === command.online) return ok({ state, events: [] });
+    const updated = {
+      ...player,
+      online: command.online,
+      graceEndsAt: command.online ? null : command.at + state.rules.disconnectGraceSeconds * 1_000,
+    };
+    const phase =
+      command.online && state.phase.kind === 'in_game'
+        ? {
+            ...state.phase,
+            turnDeadline: command.at + state.rules.turnSeconds * 1_000,
+          }
+        : state.phase;
+    return ok({
+      state: { ...updatePlayer(state, updated), phase, seq: nextSequence(state) },
+      events: [{ type: 'player.connection', playerId: player.id, online: command.online }],
+    });
+  }
+
   if (command.type === 'fleet.place') {
     if (state.phase.kind !== 'placing') return wrongPhase(state, 'placing');
     if (player.committed) return err('E_ILLEGAL_PLACEMENT', 'fleet is committed');
@@ -216,6 +246,8 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
     const target = state.players[targetId];
     /* v8 ignore next */
     if (!target) return err('E_WRONG_PHASE', 'opponent is missing');
+    if (!player.online || !target.online)
+      return err('E_WRONG_PHASE', 'waiting for the disconnected player to return');
     if (has(target.incoming, command.cell))
       return err('E_ALREADY_FIRED', 'cell was already fired at');
     const incoming = target.incoming | bit(command.cell);
@@ -261,15 +293,21 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
     return ok({ state: next, events });
   }
 
-  if (command.type === 'player.resign') {
+  if (command.type === 'player.resign' || command.type === 'player.timeout') {
     if (state.phase.kind !== 'in_game') return wrongPhase(state, 'in_game');
+    if (command.type === 'player.timeout' && state.phase.turn !== command.actor)
+      return err('E_NOT_YOUR_TURN', 'only the current player can time out');
     const winner = opponentId(state, command.actor);
     /* v8 ignore next */
     if (winner === null) return err('E_WRONG_PHASE', 'opponent is missing');
-    const phase: Phase = { kind: 'game_over', winner, reason: 'forfeit' };
+    const phase: Phase = {
+      kind: 'game_over',
+      winner,
+      reason: command.type === 'player.timeout' ? 'timeout' : 'forfeit',
+    };
     return ok({
       state: { ...state, phase, seq: nextSequence(state) },
-      events: [{ type: 'game.over', winner, reason: 'forfeit' }],
+      events: [{ type: 'game.over', winner, reason: phase.reason }],
     });
   }
 
@@ -304,6 +342,7 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
   };
   next = {
     ...next,
+    id: roomId(`${next.id}:rematch:${next.seq}`),
     players,
     phase,
     firstTurnIndex: (1 - next.firstTurnIndex) as 0 | 1,

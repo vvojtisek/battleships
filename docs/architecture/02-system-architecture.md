@@ -90,9 +90,15 @@ Properties this buys:
 
 Game state lives in the single LAN server process. `POST /api/rooms` creates an actor in its
 in-process registry. `GET /api/rooms` returns summaries of one-player lobbies so another trusted
-LAN browser can choose a room by its creator's name; it returns only `{ code, creatorName }`,
+LAN browser can choose a room by its creator's name; it returns only `{ code, creatorName, createdAt }`,
 never player IDs, resume tokens, fleets, or game state. Joining clients connect directly to that
 same server. There is no directory, proxy, Redis, or cross-instance protocol.
+
+Waiting rooms are deliberately short-lived: the creator can close one explicitly, a disconnected
+creator has a 60-second reconnect grace period, and an untouched one-player lobby expires after
+ten minutes. Active matches use the engine's 120-second reconnect grace period. The actor marks a
+player offline, pauses shots and the authoritative turn timer, then awards a timeout loss if that
+player does not return.
 
 Active rooms end if that server restarts. This is an intentional tradeoff for a private home
 game; the pure engine and room actor can later gain a local persistence adapter without changing
@@ -111,8 +117,8 @@ export interface Transport {
 
 Two implementations, one consumer:
 
-- `WebSocketTransport` — multiplayer; handles reconnect with exponential backoff
-  (250 ms → 8 s, full jitter) and resume.
+- `RemoteTransport` — multiplayer; handles reconnect with bounded exponential backoff
+  (500 ms → 8 s, six attempts) and resume.
 - `LocalTransport` — single-player; posts to the Web Worker, which owns a `RoomActor`
   and an `AiPlayer`. Identical envelopes, `seq` included, so replay tests are shared.
 

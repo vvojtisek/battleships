@@ -12,6 +12,9 @@ export type MatchWinner = 'player' | 'ai';
 export interface PublicProfile {
   readonly username: string;
   readonly points: number;
+  readonly played: number;
+  readonly wins: number;
+  readonly losses: number;
 }
 
 export interface LeaderboardEntry {
@@ -41,6 +44,7 @@ interface StoreData {
   readonly profiles: readonly Profile[];
   readonly sessions: readonly Session[];
   readonly entries: readonly StoredLeaderboardEntry[];
+  readonly recordedMatchIds: readonly string[];
 }
 
 export class ProfileStoreError extends Error {
@@ -63,7 +67,7 @@ const seedEntries: readonly StoredLeaderboardEntry[] = [
 ];
 
 function emptyData(): StoreData {
-  return { version: 1, profiles: [], sessions: [], entries: seedEntries };
+  return { version: 1, profiles: [], sessions: [], entries: seedEntries, recordedMatchIds: [] };
 }
 
 function usernameKey(username: string): string {
@@ -163,6 +167,9 @@ export class ProfileStore {
       points: 0,
       passwordHash: await hashPassword(password),
       createdAt: this.now(),
+      played: 0,
+      wins: 0,
+      losses: 0,
     };
     const token = this.newToken();
     this.data = {
@@ -218,30 +225,65 @@ export class ProfileStore {
     difficulty: Difficulty,
     winner: MatchWinner,
     profile: PublicProfile | null,
+    matchId: string,
   ): Promise<readonly LeaderboardEntry[]> {
+    if (this.data.recordedMatchIds.includes(matchId)) return this.leaderboard();
     const winnerName = winner === 'player' ? profile?.username : aiName(difficulty);
     if (!winnerName) return this.leaderboard();
     const winnerKey =
       winner === 'player' ? `player:${usernameKey(winnerName)}` : `ai:${difficulty}`;
     const points = pointsFor(difficulty);
-    this.data = this.award(
+    let next = this.award(
       this.data,
       winnerKey,
       winnerName,
       winner === 'player' ? 'player' : 'ai',
       points,
     );
+    if (profile) next = this.recordProfileResult(next, profile.username, winner === 'player');
+    this.data = this.recordMatch(next, matchId);
     await this.persist();
     return this.leaderboard();
   }
 
-  public async recordPvpWin(username: string | undefined): Promise<readonly LeaderboardEntry[]> {
-    if (!username) return this.leaderboard();
-    const profile = this.data.profiles.find((candidate) => candidate.key === usernameKey(username));
-    if (!profile) return this.leaderboard();
-    this.data = this.award(this.data, `player:${profile.key}`, profile.username, 'player', 3);
+  public async recordPvpMatch(
+    winnerUsername: string | undefined,
+    loserUsername: string | undefined,
+    matchId: string,
+  ): Promise<readonly LeaderboardEntry[]> {
+    if (this.data.recordedMatchIds.includes(matchId)) return this.leaderboard();
+    let next = this.data;
+    const winner = winnerUsername
+      ? next.profiles.find((profile) => profile.key === usernameKey(winnerUsername))
+      : undefined;
+    const loser = loserUsername
+      ? next.profiles.find((profile) => profile.key === usernameKey(loserUsername))
+      : undefined;
+    if (winner) {
+      next = this.award(next, `player:${winner.key}`, winner.username, 'player', 3);
+      next = this.recordProfileResult(next, winner.username, true);
+    }
+    if (loser) next = this.recordProfileResult(next, loser.username, false);
+    this.data = this.recordMatch(next, matchId);
     await this.persist();
     return this.leaderboard();
+  }
+
+  /** Retains the fixed seed scores while clearing results from the current LAN party. */
+  public async startNewParty(): Promise<void> {
+    this.data = {
+      ...this.data,
+      entries: this.data.entries.filter((entry) => entry.kind === 'seed'),
+      profiles: this.data.profiles.map((profile) => ({
+        ...profile,
+        points: 0,
+        played: 0,
+        wins: 0,
+        losses: 0,
+      })),
+      recordedMatchIds: [],
+    };
+    await this.persist();
   }
 
   private award(
@@ -266,8 +308,35 @@ export class ProfileStore {
     return { ...data, entries, profiles };
   }
 
+  private recordProfileResult(data: StoreData, username: string, won: boolean): StoreData {
+    const key = usernameKey(username);
+    return {
+      ...data,
+      profiles: data.profiles.map((profile) =>
+        profile.key === key
+          ? {
+              ...profile,
+              played: profile.played + 1,
+              wins: profile.wins + (won ? 1 : 0),
+              losses: profile.losses + (won ? 0 : 1),
+            }
+          : profile,
+      ),
+    };
+  }
+
+  private recordMatch(data: StoreData, matchId: string): StoreData {
+    return { ...data, recordedMatchIds: [...data.recordedMatchIds, matchId].slice(-500) };
+  }
+
   private publicProfile(profile: Profile): PublicProfile {
-    return { username: profile.username, points: profile.points };
+    return {
+      username: profile.username,
+      points: profile.points,
+      played: profile.played,
+      wins: profile.wins,
+      losses: profile.losses,
+    };
   }
 
   private newToken(): string {
@@ -275,7 +344,19 @@ export class ProfileStore {
   }
 
   private removeExpiredSessions(data: StoreData): StoreData {
-    return { ...data, sessions: data.sessions.filter((session) => session.expiresAt > this.now()) };
+    return {
+      ...data,
+      profiles: data.profiles.map((profile) => ({
+        ...profile,
+        played: Number.isSafeInteger(profile.played) ? profile.played : 0,
+        wins: Number.isSafeInteger(profile.wins) ? profile.wins : 0,
+        losses: Number.isSafeInteger(profile.losses) ? profile.losses : 0,
+      })),
+      sessions: data.sessions.filter((session) => session.expiresAt > this.now()),
+      recordedMatchIds: Array.isArray(data.recordedMatchIds)
+        ? data.recordedMatchIds.slice(-500)
+        : [],
+    };
   }
 
   private async persist(): Promise<void> {

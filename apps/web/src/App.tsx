@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, Route, Routes } from 'react-router';
+import { Link, Navigate, Outlet, Route, Routes, useNavigate, useSearchParams } from 'react-router';
+import { AppNav } from './components/AppNav.js';
 import { Battle } from './components/Battle.js';
 import { FleetPlacement } from './components/FleetPlacement.js';
+import { MainMenu, SinglePlayerSetup } from './components/MainMenu.js';
+import { MatchFrame } from './components/MatchFrame.js';
 import { MultiplayerHome, MultiplayerRoom } from './components/Multiplayer.js';
-import { Leaderboard, ProfileView } from './components/Profile.js';
+import { AuthScreen, Leaderboard, ProfileView } from './components/Profile.js';
 import { LocalTransport } from './game/LocalTransport.js';
 import { authorization, serverRequest } from './game/lanServer.js';
 import type { PlayerCommand } from './game/messages.js';
@@ -19,6 +22,12 @@ interface Palette {
 
 function isHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value);
+}
+
+function isNamedLeaderboardEntry(value: unknown): value is { readonly name: string } {
+  return (
+    value !== null && typeof value === 'object' && 'name' in value && typeof value.name === 'string'
+  );
 }
 
 function loadPalette(): Palette | null {
@@ -54,35 +63,39 @@ function contrastColor(color: string): string {
 }
 
 function Landing() {
+  const navigate = useNavigate();
+  const { active, enterGuest, loading } = useAuth();
+  if (loading) return <main>Restoring player session…</main>;
+  if (active) return <Navigate replace to="/menu" />;
+
+  function playAsGuest(): void {
+    enterGuest();
+    void navigate('/menu', { replace: true });
+  }
+
   return (
     <main className="landing">
       <p className="eyebrow">Classic strategy. Modern browser.</p>
       <h1>Battleships</h1>
-      <p>
-        Place five ships, read the water, and sink the opposing fleet. Single-player runs entirely
-        on this device.
-      </p>
-      <Link className="primary-link" to="/play">
-        Play against the computer
+      <p>Choose how you want to join this private home-LAN game.</p>
+      <Link className="primary-link" to="/auth">
+        Log in or register
       </Link>
-      <Link className="secondary-link" to="/multiplayer">
-        Play on your home LAN
-      </Link>
-      <Link className="secondary-link" to="/leaderboard">
-        View top 10 captains
-      </Link>
-      <Link className="secondary-link" to="/profile">
-        Sign in or create a profile
-      </Link>
+      <button className="guest-entry" onClick={playAsGuest} type="button">
+        Play as guest
+      </button>
     </main>
   );
 }
 
 function Play() {
   const transport = useMemo(() => new LocalTransport(), []);
-  const { snapshot, difficulty, error, setDifficulty, receive, fail, connect } = useGame();
+  const { snapshot, difficulty, error, receive, fail, connect } = useGame();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { profile, token, refresh } = useAuth();
   const [palette, setPalette] = useState<Palette | null>(loadPalette);
+  const [scoreMessage, setScoreMessage] = useState<string | null>(null);
   const recordedMatches = useRef(new Set<string>());
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>(() => {
     try {
@@ -92,6 +105,13 @@ function Play() {
       return 'system';
     }
   });
+  const requestedDifficulty = searchParams.get('difficulty');
+  const matchDifficulty =
+    requestedDifficulty === 'easy' ||
+    requestedDifficulty === 'medium' ||
+    requestedDifficulty === 'hard'
+      ? requestedDifficulty
+      : difficulty;
 
   useEffect(() => {
     if (theme === 'system') delete document.documentElement.dataset.theme;
@@ -137,8 +157,41 @@ function Play() {
   }, [connect, fail, receive, transport]);
 
   useEffect(() => {
-    transport.send({ type: 'game.new', difficulty });
-  }, [difficulty, transport]);
+    transport.send({ type: 'game.new', difficulty: matchDifficulty });
+  }, [matchDifficulty, transport]);
+
+  async function recordAiResult(winner: 'player' | 'ai', matchId: string): Promise<void> {
+    try {
+      const response = await serverRequest('/api/scores/ai', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...authorization(token) },
+        body: JSON.stringify({ difficulty: matchDifficulty, winner, matchId }),
+      });
+      if (!response.ok) return;
+      const result: unknown = await response.json();
+      if (winner === 'player') {
+        const points = matchDifficulty === 'easy' ? 1 : matchDifficulty === 'medium' ? 2 : 4;
+        const rank =
+          result &&
+          typeof result === 'object' &&
+          'entries' in result &&
+          Array.isArray(result.entries) &&
+          profile
+            ? result.entries.findIndex(
+                (entry) => isNamedLeaderboardEntry(entry) && entry.name === profile.username,
+              )
+            : -1;
+        setScoreMessage(
+          rank >= 0
+            ? `Victory recorded: +${points} points. You are now rank ${rank + 1}.`
+            : `Victory recorded: +${points} points. Keep playing to reach the top 10.`,
+        );
+      }
+      await refresh();
+    } catch {
+      // Local games remain fully playable if the LAN ranking server is offline.
+    }
+  }
 
   useEffect(() => {
     const phase = snapshot?.phase;
@@ -147,26 +200,18 @@ function Play() {
     const winner = phase.winner;
     if (recordedMatches.current.has(completedMatch.matchId)) return;
     recordedMatches.current.add(snapshot.matchId);
-    async function recordResult(): Promise<void> {
-      try {
-        const response = await serverRequest('/api/scores/ai', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...authorization(token) },
-          body: JSON.stringify({
-            difficulty,
-            winner: winner === completedMatch.you.id ? 'player' : 'ai',
-          }),
-        });
-        if (response.ok) await refresh();
-      } catch {
-        // Local games remain fully playable if the LAN ranking server is offline.
-      }
-    }
-    void recordResult();
-  }, [difficulty, refresh, snapshot, token]);
+    void recordAiResult(winner === completedMatch.you.id ? 'player' : 'ai', completedMatch.matchId);
+  }, [matchDifficulty, profile, refresh, snapshot, token]);
 
   function newGame(): void {
-    transport.send({ type: 'game.new', difficulty });
+    transport.send({ type: 'game.new', difficulty: matchDifficulty });
+  }
+
+  async function forfeit(): Promise<void> {
+    if (snapshot) recordedMatches.current.add(snapshot.matchId);
+    transport.send({ type: 'game.command', command: { type: 'player.resign' } });
+    await recordAiResult('ai', snapshot?.matchId ?? `forfeit-${Date.now()}`);
+    void navigate('/menu', { replace: true });
   }
 
   function updatePalette(part: keyof Palette, value: string): void {
@@ -191,38 +236,25 @@ function Play() {
   const send = (command: PlayerCommand): void => transport.send({ type: 'game.command', command });
 
   return (
-    <>
-      <nav>
-        <Link to="/">Battleships</Link>
-        <Link to="/multiplayer">Multiplayer</Link>
-        <Link to="/leaderboard">Top 10</Link>
-        <Link to="/profile">{profile ? profile.username : 'Profile'}</Link>
-        <label className="difficulty-control">
-          Difficulty{' '}
-          <select
-            value={difficulty}
-            onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}
-          >
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-        </label>
-        <div aria-label="Color theme" className="theme-control" role="group">
-          {(['system', 'light', 'dark'] as const).map((choice) => (
-            <button
-              aria-pressed={theme === choice}
-              key={choice}
-              onClick={() => setTheme(choice)}
-              type="button"
-            >
-              {choice}
-            </button>
-          ))}
-        </div>
-        <details className="appearance-control">
-          <summary>Board colors</summary>
+    <MatchFrame
+      mode="Single player"
+      onForfeit={forfeit}
+      settings={
+        <section aria-label="Appearance" className="match-appearance">
+          <h3>Appearance</h3>
           <div>
+            <div aria-label="Color theme" className="theme-control" role="group">
+              {(['system', 'light', 'dark'] as const).map((choice) => (
+                <button
+                  aria-pressed={theme === choice}
+                  key={choice}
+                  onClick={() => setTheme(choice)}
+                  type="button"
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
             <label>
               Water
               <input
@@ -242,27 +274,56 @@ function Play() {
               />
             </label>
             <button disabled={!palette} onClick={resetPalette} type="button">
-              Reset
+              Reset colors
             </button>
           </div>
-        </details>
-      </nav>
+        </section>
+      }
+    >
       {error && (
         <p className="error" role="alert">
           {error}
+        </p>
+      )}
+      {scoreMessage && (
+        <p className="score-message" role="status">
+          {scoreMessage}
         </p>
       )}
       {snapshot.phase.kind === 'placing' ? (
         <FleetPlacement snapshot={snapshot} send={send} />
       ) : (
         <Battle
-          difficulty={difficulty}
+          difficulty={matchDifficulty}
           {...(profile ? { playerPoints: profile.points } : {})}
           snapshot={snapshot}
           send={send}
           onNewGame={newGame}
+          newGameLabel={`Play ${matchDifficulty[0]!.toUpperCase()}${matchDifficulty.slice(1)} AI again`}
+          onChooseDifficulty={() => void navigate('/single-player')}
         />
       )}
+    </MatchFrame>
+  );
+}
+
+function RequireActive({ children }: { readonly children: React.ReactNode }) {
+  const { active, loading } = useAuth();
+  if (loading) return <main>Restoring player session…</main>;
+  return active ? children : <Navigate replace to="/" />;
+}
+
+function RedirectIfActive({ children }: { readonly children: React.ReactNode }) {
+  const { active, loading } = useAuth();
+  if (loading) return <main>Restoring player session…</main>;
+  return active ? <Navigate replace to="/menu" /> : children;
+}
+
+function IdleLayout() {
+  return (
+    <>
+      <AppNav />
+      <Outlet />
     </>
   );
 }
@@ -272,11 +333,43 @@ export function App() {
     <AuthProvider>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="/play" element={<Play />} />
-        <Route path="/multiplayer" element={<MultiplayerHome />} />
-        <Route path="/room/:code" element={<MultiplayerRoom />} />
-        <Route path="/leaderboard" element={<Leaderboard />} />
-        <Route path="/profile" element={<ProfileView />} />
+        <Route
+          path="/auth"
+          element={
+            <RedirectIfActive>
+              <AuthScreen />
+            </RedirectIfActive>
+          }
+        />
+        <Route
+          element={
+            <RequireActive>
+              <IdleLayout />
+            </RequireActive>
+          }
+        >
+          <Route path="/menu" element={<MainMenu />} />
+          <Route path="/single-player" element={<SinglePlayerSetup />} />
+          <Route path="/multiplayer" element={<MultiplayerHome />} />
+          <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/profile" element={<ProfileView />} />
+        </Route>
+        <Route
+          path="/play"
+          element={
+            <RequireActive>
+              <Play />
+            </RequireActive>
+          }
+        />
+        <Route
+          path="/room/:code"
+          element={
+            <RequireActive>
+              <MultiplayerRoom />
+            </RequireActive>
+          }
+        />
         <Route path="*" element={<Navigate replace to="/" />} />
       </Routes>
     </AuthProvider>

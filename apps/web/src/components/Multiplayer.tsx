@@ -1,8 +1,10 @@
 import type { ProjectedRoomState } from '@bs/engine';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { AppNav } from './AppNav.js';
 import { Battle } from './Battle.js';
 import { FleetPlacement } from './FleetPlacement.js';
+import { MatchFrame } from './MatchFrame.js';
 import { authorization, serverRequest, serverUrl } from '../game/lanServer.js';
 import { RemoteTransport, type RemoteEvent } from '../game/RemoteTransport.js';
 import { useAuth } from '../profile/Auth.js';
@@ -13,6 +15,7 @@ const tokenKey = (code: string) => `battleships.room-token.${code}`;
 interface JoinableRoom {
   readonly code: string;
   readonly creatorName: string;
+  readonly createdAt: number;
 }
 
 function loadName(): string {
@@ -47,6 +50,14 @@ function saveToken(code: string, token: string): void {
   }
 }
 
+function removeToken(code: string): void {
+  try {
+    localStorage.removeItem(tokenKey(code));
+  } catch {
+    // Removing an expired room token is only a convenience.
+  }
+}
+
 function isJoinableRoom(value: unknown): value is JoinableRoom {
   return (
     value !== null &&
@@ -56,8 +67,15 @@ function isJoinableRoom(value: unknown): value is JoinableRoom {
     typeof value.code === 'string' &&
     /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{6}$/.test(value.code) &&
     typeof value.creatorName === 'string' &&
-    value.creatorName.length > 0
+    value.creatorName.length > 0 &&
+    'createdAt' in value &&
+    typeof value.createdAt === 'number'
   );
+}
+
+function roomAge(createdAt: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1_000));
+  return seconds < 60 ? 'opened just now' : `opened ${Math.floor(seconds / 60)} min ago`;
 }
 
 export function MultiplayerHome() {
@@ -68,6 +86,8 @@ export function MultiplayerHome() {
   const [creating, setCreating] = useState(false);
   const [rooms, setRooms] = useState<readonly JoinableRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [lastLoaded, setLastLoaded] = useState<number | null>(null);
 
   useEffect(() => {
     if (profile) setName(profile.username);
@@ -89,7 +109,10 @@ export function MultiplayerHome() {
         if (!Array.isArray(result.rooms) || !result.rooms.every(isJoinableRoom)) {
           throw new Error('The LAN server returned an invalid room list.');
         }
-        if (active) setRooms(result.rooms);
+        if (active) {
+          setRooms(result.rooms);
+          setLastLoaded(Date.now());
+        }
       } catch (cause) {
         if (active && !(cause instanceof DOMException && cause.name === 'AbortError')) {
           setError(cause instanceof Error ? cause.message : 'Could not reach the LAN server.');
@@ -106,7 +129,7 @@ export function MultiplayerHome() {
       controller.abort();
       window.clearInterval(refresh);
     };
-  }, []);
+  }, [refreshKey]);
 
   async function createRoom(): Promise<void> {
     const displayName = name.trim();
@@ -190,7 +213,7 @@ export function MultiplayerHome() {
               <li key={room.code}>
                 <div>
                   <strong>{room.creatorName}</strong>
-                  <span>Waiting for an opponent</span>
+                  <span>Waiting for an opponent · {roomAge(room.createdAt)}</span>
                 </div>
                 <button onClick={() => joinRoom(room)} type="button">
                   Join game
@@ -199,8 +222,15 @@ export function MultiplayerHome() {
             ))}
           </ul>
         )}
+        <button
+          className="text-button"
+          onClick={() => setRefreshKey((current) => current + 1)}
+          type="button"
+        >
+          Refresh rooms{lastLoaded ? ' now' : ''}
+        </button>
       </section>
-      <Link to="/play">Play against the computer instead</Link>
+      <Link to="/single-player">Play against the computer instead</Link>
     </main>
   );
 }
@@ -215,6 +245,7 @@ export function MultiplayerRoom() {
   const [status, setStatus] = useState('Connecting to the LAN server…');
   const [error, setError] = useState<string | null>(null);
   const [resumeToken, setResumeToken] = useState(() => loadToken(code));
+  const [forfeiting, setForfeiting] = useState(false);
   const recordedMatches = useRef(new Set<string>());
   const transport = useMemo(() => new RemoteTransport(serverUrl(), resumeToken), [resumeToken]);
 
@@ -241,9 +272,12 @@ export function MultiplayerRoom() {
           setResumeToken(event.resumeToken);
           return;
         }
+        setError(null);
         setStatus(event.playerId ? 'Connected' : 'Enter your name to join this room.');
       } else if (event.type === 'error') {
         setError(event.detail);
+      } else if (event.type === 'connection.reconnecting') {
+        setStatus(`Connection lost — reconnecting (attempt ${event.attempt} of 6)…`);
       } else {
         setStatus(event.detail);
       }
@@ -264,6 +298,12 @@ export function MultiplayerRoom() {
     if (phase.winner === snapshot.you.id && profile) void refresh();
   }, [profile, refresh, snapshot]);
 
+  useEffect(() => {
+    if (forfeiting && snapshot?.phase.kind === 'game_over') {
+      void navigate('/menu', { replace: true });
+    }
+  }, [forfeiting, navigate, snapshot]);
+
   function join(): void {
     const displayName = name.trim();
     if (!displayName) return setError('Enter your name before joining.');
@@ -280,44 +320,64 @@ export function MultiplayerRoom() {
     transport.send(command);
   }
 
+  function forfeit(): void {
+    setForfeiting(true);
+    send({ type: 'player.resign' });
+  }
+
+  async function closeRoom(): Promise<void> {
+    if (!resumeToken) {
+      void navigate('/multiplayer');
+      return;
+    }
+    try {
+      await serverRequest(`/api/rooms/${code}`, {
+        method: 'DELETE',
+        headers: { 'x-room-resume-token': resumeToken },
+      });
+    } finally {
+      removeToken(code);
+      void navigate('/multiplayer', { replace: true });
+    }
+  }
+
   if (!snapshot) {
     return (
-      <main className="room-home">
-        <p className="eyebrow">Room {code || 'unknown'}</p>
-        <h1>{status}</h1>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
-        {!resumeToken && (
-          <div className="join-form">
-            <label>
-              Your name
-              <input
-                maxLength={24}
-                onChange={(event) => setName(event.target.value)}
-                value={name}
-              />
-            </label>
-            <button onClick={join} type="button">
-              Join room
-            </button>
-          </div>
-        )}
-        <Link to="/multiplayer">Back to multiplayer</Link>
-      </main>
+      <>
+        <AppNav />
+        <main className="room-home">
+          <p className="eyebrow">Room {code || 'unknown'}</p>
+          <h1>{status}</h1>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          {!resumeToken && (
+            <div className="join-form">
+              <label>
+                Your name
+                <input
+                  maxLength={24}
+                  onChange={(event) => setName(event.target.value)}
+                  value={name}
+                />
+              </label>
+              <button onClick={join} type="button">
+                Join room
+              </button>
+            </div>
+          )}
+          <Link to="/multiplayer">Back to multiplayer</Link>
+        </main>
+      </>
     );
   }
 
   if (snapshot.phase.kind === 'lobby') {
     return (
       <>
-        <nav>
-          <Link to="/">Battleships</Link>
-          <Link to="/leaderboard">Top 10</Link>
-          <span className="connection-status">{status}</span>
-        </nav>
+        <AppNav />
         <main className="room-home">
           <p className="eyebrow">Private home LAN room</p>
           <h1>Room {code}</h1>
@@ -326,20 +386,25 @@ export function MultiplayerRoom() {
             your name and move both players to fleet placement as soon as they join.
           </p>
           <p aria-live="polite">Waiting for an opponent…</p>
-          <Link to="/multiplayer">Create or join another room</Link>
+          <p className="connection-status">
+            This room closes automatically after one minute offline, or ten minutes idle.
+          </p>
+          <div className="button-row">
+            <button className="danger-button" onClick={() => void closeRoom()} type="button">
+              Close room
+            </button>
+            <Link to="/multiplayer">Back to multiplayer</Link>
+          </div>
         </main>
       </>
     );
   }
 
   return (
-    <>
-      <nav>
-        <Link to="/">Battleships</Link>
-        <Link to="/leaderboard">Top 10</Link>
-        <span className="room-code">Room {code}</span>
-        <span className="connection-status">{status}</span>
-      </nav>
+    <MatchFrame mode="LAN multiplayer" onForfeit={forfeit}>
+      <p aria-live="polite" className="connection-status">
+        {status}
+      </p>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -349,13 +414,14 @@ export function MultiplayerRoom() {
         <FleetPlacement send={send} snapshot={snapshot} />
       ) : (
         <Battle
-          newGameLabel="Find a new room"
+          newGameLabel="Leave room"
           onNewGame={() => void navigate('/multiplayer')}
+          onRematch={() => send({ type: 'game.rematch', accept: true, at: Date.now() })}
           opponentName={snapshot.opponent.displayName ?? 'Opponent'}
           send={send}
           snapshot={snapshot}
         />
       )}
-    </>
+    </MatchFrame>
   );
 }

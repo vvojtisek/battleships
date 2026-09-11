@@ -1,18 +1,22 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authorization, serverRequest } from '../game/lanServer.js';
+import { profileFrom, type Profile } from './profile.js';
+import { activeUserLabel, isActiveSession } from './session.js';
 
 const SESSION_KEY = 'battleships.profile-session.v1';
+const GUEST_KEY = 'battleships.guest-session.v1';
 
-export interface Profile {
-  readonly username: string;
-  readonly points: number;
-}
+export type { Profile } from './profile.js';
 
 interface AuthContextValue {
   readonly profile: Profile | null;
   readonly token: string | null;
+  readonly guest: boolean;
+  readonly active: boolean;
+  readonly activeUserLabel: string;
   readonly loading: boolean;
   authenticate(mode: 'login' | 'register', username: string, password: string): Promise<void>;
+  enterGuest(): void;
   logout(): Promise<void>;
   refresh(): Promise<void>;
 }
@@ -36,20 +40,27 @@ function saveToken(token: string | null): void {
   }
 }
 
-function isProfile(value: unknown): value is Profile {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'username' in value &&
-    typeof value.username === 'string' &&
-    'points' in value &&
-    typeof value.points === 'number'
-  );
+function loadGuest(): boolean {
+  try {
+    return sessionStorage.getItem(GUEST_KEY) === 'active';
+  } catch {
+    return false;
+  }
+}
+
+function saveGuest(guest: boolean): void {
+  try {
+    if (guest) sessionStorage.setItem(GUEST_KEY, 'active');
+    else sessionStorage.removeItem(GUEST_KEY);
+  } catch {
+    // A guest can still play for the current page lifetime when session storage is unavailable.
+  }
 }
 
 export function AuthProvider({ children }: { readonly children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(loadToken);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [guest, setGuest] = useState(loadGuest);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -63,8 +74,9 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       const result: unknown = await response.json();
       if (!response.ok || !result || typeof result !== 'object' || !('profile' in result))
         throw new Error('Could not restore your profile.');
-      setProfile(isProfile(result.profile) ? result.profile : null);
-      if (!isProfile(result.profile)) {
+      const restoredProfile = profileFrom(result.profile);
+      setProfile(restoredProfile);
+      if (!restoredProfile) {
         setToken(null);
         saveToken(null);
       }
@@ -88,12 +100,15 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
         body: JSON.stringify({ username, password }),
       });
       const result: unknown = await response.json();
+      const authenticatedProfile =
+        result && typeof result === 'object' && 'profile' in result
+          ? profileFrom(result.profile)
+          : null;
       if (
         !response.ok ||
         !result ||
         typeof result !== 'object' ||
-        !('profile' in result) ||
-        !isProfile(result.profile) ||
+        !authenticatedProfile ||
         !('token' in result) ||
         typeof result.token !== 'string'
       ) {
@@ -108,11 +123,22 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
       }
       setToken(result.token);
       saveToken(result.token);
-      setProfile(result.profile);
+      setProfile(authenticatedProfile);
+      setGuest(false);
+      saveGuest(false);
       setLoading(false);
     },
     [],
   );
+
+  const enterGuest = useCallback((): void => {
+    setToken(null);
+    setProfile(null);
+    setGuest(true);
+    saveToken(null);
+    saveGuest(true);
+    setLoading(false);
+  }, []);
 
   const logout = useCallback(async (): Promise<void> => {
     try {
@@ -120,14 +146,27 @@ export function AuthProvider({ children }: { readonly children: React.ReactNode 
     } finally {
       setToken(null);
       setProfile(null);
+      setGuest(false);
       saveToken(null);
+      saveGuest(false);
     }
   }, [token]);
 
-  const value = useMemo<AuthContextValue>(
-    () => ({ profile, token, loading, authenticate, logout, refresh }),
-    [authenticate, loading, logout, profile, refresh, token],
-  );
+  const value = useMemo<AuthContextValue>(() => {
+    const session = { profile, guest };
+    return {
+      profile,
+      token,
+      guest,
+      active: isActiveSession(session),
+      activeUserLabel: activeUserLabel(session),
+      loading,
+      authenticate,
+      enterGuest,
+      logout,
+      refresh,
+    };
+  }, [authenticate, enterGuest, guest, loading, logout, profile, refresh, token]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
