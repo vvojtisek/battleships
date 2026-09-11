@@ -290,6 +290,13 @@ describe('room reducer', () => {
     if (state.phase.kind !== 'in_game') throw new Error('expected game');
     const current = state.phase.turn;
     const other = opponentId(state, current) as PlayerId;
+    expect(
+      reduce(state, { type: 'player.connection', actor: current, online: true, at: 2_500 }),
+    ).toMatchObject({ ok: true, value: { state, events: [] } });
+    expect(reduce(state, { type: 'player.timeout', actor: other })).toMatchObject({
+      ok: false,
+      code: 'E_NOT_YOUR_TURN',
+    });
     state = apply(state, { type: 'player.connection', actor: other, online: false, at: 3_000 });
     expect(projectRoom(state, current, 3_000).opponent.online).toBe(false);
     expect(
@@ -311,6 +318,14 @@ describe('projection and replay', () => {
     expect(projected).not.toHaveProperty('reveal');
     expect(projected.serverTime).toBe(12_345);
     expect(() => projectRoom(state, playerId('outsider'), 1)).toThrow('viewer');
+    if (state.phase.kind !== 'in_game') throw new Error('expected game');
+    const afterShot = apply(state, {
+      type: 'turn.fire',
+      actor: state.phase.turn,
+      cell: toCell(0, 0),
+      at: 12_346,
+    });
+    expect(projectRoom(afterShot, ONE, 12_346).latestShot).toEqual(afterShot.log.at(-1));
     const resigned = apply(state, { type: 'player.resign', actor: ONE });
     expect(projectRoom(resigned, ONE, 1).reveal?.[TWO]).toHaveLength(5);
   });
