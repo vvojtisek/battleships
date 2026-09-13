@@ -256,10 +256,17 @@ describe('room reducer', () => {
     state = apply(state, { type: 'player.resign', actor: shooter });
     expect(state.phase).toMatchObject({ kind: 'game_over', winner: target, reason: 'forfeit' });
     const previousMatchId = state.id;
-    state = apply(state, { type: 'game.rematch', actor: shooter, accept: false, at: 4_000 });
-    expect(state.phase.kind).toBe('game_over');
     state = apply(state, { type: 'game.rematch', actor: shooter, accept: true, at: 4_000 });
-    state = apply(state, { type: 'game.rematch', actor: target, accept: true, at: 4_000 });
+    expect(state.phase.kind).toBe('game_over');
+    expect(state.players[shooter]).toMatchObject({ rematch: true, rematchRequestedAt: 4_000 });
+    state = apply(state, { type: 'game.rematch', actor: shooter, accept: false, at: 4_001 });
+    expect(state.players[shooter]).toMatchObject({ rematch: false, rematchRequestedAt: null });
+    state = apply(state, { type: 'game.rematch', actor: shooter, accept: true, at: 4_002 });
+    state = apply(state, { type: 'game.rematch', actor: target, accept: true, at: 304_002 });
+    expect(state.phase.kind).toBe('game_over');
+    expect(state.players[shooter]).toMatchObject({ rematch: false, rematchRequestedAt: null });
+    expect(state.players[target]).toMatchObject({ rematch: true, rematchRequestedAt: 304_002 });
+    state = apply(state, { type: 'game.rematch', actor: shooter, accept: true, at: 304_003 });
     expect(state.phase.kind).toBe('placing');
     expect(state.id).not.toBe(previousMatchId);
     expect(state.players[shooter]?.ships).toEqual([]);
@@ -283,6 +290,22 @@ describe('room reducer', () => {
     alternate = apply(alternate, { type: 'game.rematch', actor: ONE, accept: true, at: 6_000 });
     alternate = apply(alternate, { type: 'game.rematch', actor: TWO, accept: true, at: 6_000 });
     expect(alternate.phase.kind).toBe('placing');
+  });
+
+  test('closes an uncommitted fleet placement only after its deadline', () => {
+    let state = room();
+    state = apply(state, { type: 'room.join', actor: TWO, displayName: 'Two', at: 1_000 });
+    expect(state.phase).toMatchObject({ kind: 'placing', deadline: 181_000 });
+    expect(reduce(state, { type: 'placement.timeout', actor: ONE, at: 180_999 })).toMatchObject({
+      ok: false,
+      code: 'E_WRONG_PHASE',
+    });
+    state = apply(state, { type: 'placement.timeout', actor: ONE, at: 181_000 });
+    expect(state.phase).toMatchObject({ kind: 'closed', reason: 'placement_timeout' });
+    expect(reduce(state, { type: 'placement.timeout', actor: ONE, at: 181_001 })).toMatchObject({
+      ok: false,
+      code: 'E_WRONG_PHASE',
+    });
   });
 
   test('pauses shots during a disconnect and forfeits only after three consecutive timeouts', () => {

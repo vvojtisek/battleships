@@ -20,7 +20,7 @@ interface Props {
   readonly opponentName?: string;
   readonly newGameLabel?: string;
   readonly onChooseDifficulty?: () => void;
-  readonly onRematch?: () => void;
+  readonly onRematch?: (accept: boolean) => void;
   readonly onLeaderboard: () => void;
   readonly onMainMenu: () => void;
 }
@@ -391,13 +391,15 @@ export function Battle({
             <div className="button-row">
               <button
                 className="primary-button"
-                disabled={Boolean(onRematch && snapshot.you.rematch)}
-                onClick={onRematch ?? onNewGame}
+                onClick={() => {
+                  if (onRematch) onRematch(!snapshot.you.rematch);
+                  else onNewGame();
+                }}
                 type="button"
               >
                 {onRematch
                   ? snapshot.you.rematch
-                    ? 'Rematch requested'
+                    ? 'Cancel rematch request'
                     : snapshot.opponent.rematch
                       ? 'Accept rematch'
                       : 'Play again'

@@ -61,7 +61,7 @@ describe('match flow', () => {
     expect(screen.queryByRole('button', { name: 'Pause match' })).toBeNull();
   });
 
-  it('restores pause controls after the surrender callback settles', async () => {
+  it('closes pause controls after the surrender callback settles', async () => {
     let settle: (() => void) | undefined;
     renderMatchFrame({
       onForfeit: () =>
@@ -76,7 +76,7 @@ describe('match flow', () => {
     expect(surrender).toHaveProperty('disabled', true);
     settle?.();
     await waitFor(() => {
-      expect(surrender).toHaveProperty('disabled', false);
+      expect(screen.queryByRole('dialog', { name: 'Keep your fleet on course?' })).toBeNull();
     });
   });
 

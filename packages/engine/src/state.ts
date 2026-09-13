@@ -40,6 +40,7 @@ export interface PlayerState {
   readonly timeouts: number;
   readonly isBot: boolean;
   readonly rematch: boolean;
+  readonly rematchRequestedAt: number | null;
 }
 
 export interface ShotRecord {
@@ -89,6 +90,7 @@ export function emptyPlayer(id: PlayerId, displayName: string, isBot = false): P
     timeouts: 0,
     isBot,
     rematch: false,
+    rematchRequestedAt: null,
   };
 }
 

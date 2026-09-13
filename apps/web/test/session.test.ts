@@ -11,6 +11,7 @@ describe('session navigation state', () => {
   it('treats registered and guest players as active sessions', () => {
     expect(isActiveSession({ profile: { username: 'Vlad', points: 4 }, guest: false })).toBe(true);
     expect(isActiveSession({ profile: null, guest: true })).toBe(true);
+    expect(isActiveSession({ profile: null, guest: false, offline: true })).toBe(true);
     expect(isActiveSession({ profile: null, guest: false })).toBe(false);
   });
 
@@ -19,5 +20,6 @@ describe('session navigation state', () => {
       'Vlad',
     );
     expect(activeUserLabel({ profile: null, guest: true })).toBe('Guest captain');
+    expect(activeUserLabel({ profile: null, guest: false, offline: true })).toBe('Offline captain');
   });
 });

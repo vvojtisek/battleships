@@ -33,6 +33,7 @@ export type Command =
   | { readonly type: 'fleet.random'; readonly actor: PlayerId }
   | { readonly type: 'fleet.clear'; readonly actor: PlayerId; readonly shipKind?: ShipKind }
   | { readonly type: 'fleet.commit'; readonly actor: PlayerId; readonly at: number }
+  | { readonly type: 'placement.timeout'; readonly actor: PlayerId; readonly at: number }
   | {
       readonly type: 'turn.fire';
       readonly actor: PlayerId;
@@ -54,6 +55,8 @@ export type Command =
       readonly accept: boolean;
       readonly at: number;
     };
+
+const REMATCH_WINDOW_MS = 5 * 60 * 1_000;
 
 export type EngineError =
   | 'E_ROOM_FULL'
@@ -173,6 +176,17 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
     return ok({
       state: { ...updatePlayer(state, updated), phase, seq: nextSequence(state) },
       events: [{ type: 'player.connection', playerId: player.id, online: command.online }],
+    });
+  }
+
+  if (command.type === 'placement.timeout') {
+    if (state.phase.kind !== 'placing') return wrongPhase(state, 'placing');
+    if (command.at < state.phase.deadline)
+      return err('E_WRONG_PHASE', 'placement deadline has not elapsed');
+    const phase: Phase = { kind: 'closed', reason: 'placement_timeout' };
+    return ok({
+      state: { ...state, phase, seq: nextSequence(state) },
+      events: [{ type: 'phase.changed', phase }],
     });
   }
 
@@ -343,8 +357,24 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
   }
 
   if (state.phase.kind !== 'game_over') return wrongPhase(state, 'game_over');
-  const accepted = { ...player, rematch: command.accept };
-  let next = updatePlayer(state, accepted);
+  let next = state;
+  for (const id of state.order) {
+    const candidate = next.players[id]!;
+    if (
+      candidate.rematch &&
+      (candidate.rematchRequestedAt === null ||
+        command.at - candidate.rematchRequestedAt >= REMATCH_WINDOW_MS)
+    ) {
+      next = updatePlayer(next, { ...candidate, rematch: false, rematchRequestedAt: null });
+    }
+  }
+  const current = next.players[command.actor]!;
+  const accepted = {
+    ...current,
+    rematch: command.accept,
+    rematchRequestedAt: command.accept ? (current.rematchRequestedAt ?? command.at) : null,
+  };
+  next = updatePlayer(next, accepted);
   const bothAccepted =
     next.order.length === 2 && next.order.every((id) => next.players[id]?.rematch === true);
   if (!bothAccepted) return ok({ state: { ...next, seq: nextSequence(next) }, events: [] });
@@ -363,6 +393,7 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
           committed: false,
           timeouts: 0,
           rematch: false,
+          rematchRequestedAt: null,
         },
       ];
     }),

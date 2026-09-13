@@ -114,6 +114,8 @@ export interface PlayerState {
   readonly graceEndsAt: number | null;
   readonly timeouts: number;         // consecutive turn timeouts; 3 => forfeit
   readonly isBot: boolean;
+  readonly rematch: boolean;
+  readonly rematchRequestedAt: number | null; // expires after 5 minutes
 }
 
 export interface RoomState {

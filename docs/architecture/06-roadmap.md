@@ -103,6 +103,8 @@ keyboard-only playthrough.
   address; do not port-forward either service.
 - The **leak test** ([§7.2](./07-testing-security.md#the-leak-test)) — this phase does
   not ship without it.
+- `e2e/match-flow.spec.ts`: two isolated browser contexts create and join a LAN room, confirm
+  fleets, and leave the terminal match screen.
 
 **Exit:** two browsers on the configured home LAN complete a game through the local server;
 the origin allowlist blocks an unapproved browser origin; Playwright two-context E2E and the
@@ -118,8 +120,8 @@ leak test are green. A server restart ends in-memory rooms; persistence is a fut
 - Connection status HUD (`connecting / reconnecting / opponent offline (1:47)`).
 - Error and edge-case UX: room full, room not found, opponent left, server draining.
 - WebAudio effects with a mute toggle persisted to `localStorage`.
-- PWA: manifest, icons, service worker caching the shell so single-player works offline
-  (Workbox via `vite-plugin-pwa`).
+- PWA: manifest, icon, and Workbox service worker cache the shell so single-player works offline
+  (implemented with `vite-plugin-pwa`).
 - OG image worker for shared invite links.
 
 **Exit:** manual chaos pass — kill Wi-Fi mid-turn, refresh mid-placement, open the same

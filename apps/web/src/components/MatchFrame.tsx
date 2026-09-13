@@ -20,6 +20,7 @@ export function MatchFrame({ children, onForfeit, mode, phase, canForfeit, setti
     setForfeiting(true);
     try {
       await onForfeit();
+      setPaused(false);
     } finally {
       setForfeiting(false);
     }

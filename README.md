@@ -38,8 +38,10 @@ one minute after its creator disconnects, and expires after ten minutes idle. Ac
 brief Wi-Fi interruption automatically; while either player is reconnecting, shots and the
 authoritative 45-second turn timer are paused.
 
-At game over, LAN players can request a rematch in the same room. Both players must accept, after
-which they return to fleet placement and the starting player alternates.
+At game over, LAN players can request a rematch in the same room. Either player can cancel their
+request, and unanswered requests expire after five minutes. When both requests are active, the
+players return to fleet placement and the starting player alternates. Both fleets must be confirmed
+within three minutes or the room closes, preventing an abandoned setup from blocking a room.
 
 During a battle, bundled audio samples play for misses, hits, and sunk ships. Sound begins only
 after a player gesture and can be disabled with the **Sound on/off** button; the preference stays
@@ -96,6 +98,13 @@ each room is a single-writer actor holding full-information state, and every out
 message passes through one projection function that strips what the recipient is not
 entitled to see. That single boundary is what makes "open DevTools to see the opponent's
 ships" impossible rather than merely inconvenient.
+
+## Offline single-player
+
+After the game has been opened once while connected, the browser can install it as a PWA and caches
+the application shell for offline use. A stored profile is cached only for its display name and
+local navigation; score changes wait for the LAN host to return. If the host is unavailable, local
+single-player remains available and no sign-in round trip is required.
 
 ## Game rules
 

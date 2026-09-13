@@ -59,6 +59,9 @@ export class RoomRegistry {
       }),
       this.now,
       (winner, matchId) => this.winnerHandler?.(code, winner, matchId),
+      () => {
+        this.deleteRoom(code);
+      },
     );
     this.rooms.set(code, {
       actor,

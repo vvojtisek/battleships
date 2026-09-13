@@ -147,4 +147,76 @@ describe('RoomActor', () => {
       state: { phase: { kind: 'game_over', winner: second, reason: 'timeout' } },
     });
   });
+
+  it('closes a room when fleet placement expires', () => {
+    vi.useFakeTimers();
+    let now = 0;
+    let state = createRoom({
+      id: roomId('room'),
+      code: 'ABCDEF',
+      creator: alice,
+      displayName: 'Alice',
+      seed: 1,
+      now,
+    });
+    const joined = reduce(state, { type: 'room.join', actor: bob, displayName: 'Bob', at: 1 });
+    if (!joined.ok) throw new Error(joined.detail);
+    state = joined.value.state;
+    const closed: string[] = [];
+    const actor = new RoomActor(
+      state,
+      () => now,
+      undefined,
+      (matchId) => closed.push(matchId),
+    );
+    const aliceMessages = messages(alice);
+    const bobMessages = messages(bob);
+    actor.attach(aliceMessages.connection);
+    actor.attach(bobMessages.connection);
+
+    now = 180_001;
+    vi.advanceTimersByTime(180_001);
+    expect(closed).toEqual(['room']);
+    expect(aliceMessages.sent.at(-1)).toMatchObject({
+      type: 'room.snapshot',
+      state: { phase: { kind: 'closed', reason: 'placement_timeout' } },
+    });
+  });
+
+  it('clears an unanswered rematch request after five minutes', () => {
+    vi.useFakeTimers();
+    let now = 10;
+    let state: RoomState = createRoom({
+      id: roomId('room'),
+      code: 'ABCDEF',
+      creator: alice,
+      displayName: 'Alice',
+      seed: 1,
+      now: 0,
+    });
+    const prepare = (command: Command): void => {
+      const result = reduce(state, command);
+      if (!result.ok) throw new Error(result.detail);
+      state = result.value.state;
+    };
+    prepare({ type: 'room.join', actor: bob, displayName: 'Bob', at: 1 });
+    prepare({ type: 'fleet.random', actor: alice });
+    prepare({ type: 'fleet.random', actor: bob });
+    prepare({ type: 'fleet.commit', actor: alice, at: 2 });
+    prepare({ type: 'fleet.commit', actor: bob, at: 3 });
+    const actor = new RoomActor(state, () => now);
+    const aliceMessages = messages(alice);
+    const bobMessages = messages(bob);
+    actor.attach(aliceMessages.connection);
+    actor.attach(bobMessages.connection);
+    actor.submit(bob, { type: 'player.resign', actor: bob }, 'resign-1');
+    actor.submit(alice, { type: 'game.rematch', actor: alice, accept: true, at: now }, 'rematch-1');
+
+    now += 5 * 60 * 1_000;
+    vi.advanceTimersByTime(5 * 60 * 1_000);
+    expect(aliceMessages.sent.at(-1)).toMatchObject({
+      type: 'room.snapshot',
+      state: { phase: { kind: 'game_over' }, you: { rematch: false } },
+    });
+  });
 });

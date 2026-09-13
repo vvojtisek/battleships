@@ -35,19 +35,22 @@ export class RoomActor {
   private readonly seen = new Map<string, readonly ServerMessage[]>();
   private readonly graceTimers = new Map<PlayerId, ReturnType<typeof setTimeout>>();
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  private placementTimer: ReturnType<typeof setTimeout> | null = null;
+  private rematchTimer: ReturnType<typeof setTimeout> | null = null;
   private draining = false;
 
   public constructor(
     private state: RoomState,
     private readonly now: () => number = Date.now,
     private readonly onGameOver?: (winner: PlayerId, matchId: string) => void,
+    private readonly onClosed?: (matchId: string) => void,
   ) {}
 
   public attach(connection: Connection): void {
     this.connections.set(connection.playerId, connection);
     this.clearGraceTimer(connection.playerId);
     this.updateConnection(connection.playerId, true);
-    this.syncTurnTimer();
+    this.syncTimers();
     connection.send({
       type: 'room.snapshot',
       state: projectRoom(this.state, connection.playerId, this.now()),
@@ -57,7 +60,7 @@ export class RoomActor {
   public detach(player: PlayerId): void {
     this.connections.delete(player);
     this.updateConnection(player, false);
-    this.syncTurnTimer();
+    this.syncTimers();
     const playerState = this.state.players[player];
     if (!playerState?.graceEndsAt || this.state.phase.kind !== 'in_game') return;
     const delay = Math.max(0, playerState.graceEndsAt - this.now());
@@ -105,7 +108,7 @@ export class RoomActor {
       if (event.type === 'game.over') this.onGameOver?.(event.winner, this.state.id);
     }
     this.broadcast(cmdId);
-    this.syncTurnTimer();
+    this.syncTimers();
     this.seen.set(cmdId, [
       { type: 'room.snapshot', state: projectRoom(this.state, from, this.now()), cmdId },
     ]);
@@ -121,7 +124,7 @@ export class RoomActor {
     if (!result.ok || result.value.events.length === 0) return;
     this.state = result.value.state;
     this.broadcast();
-    this.syncTurnTimer();
+    this.syncTimers();
   }
 
   private expireDisconnectedPlayer(playerId: PlayerId): void {
@@ -134,7 +137,7 @@ export class RoomActor {
     for (const event of result.value.events)
       if (event.type === 'game.over') this.onGameOver?.(event.winner, this.state.id);
     this.broadcast();
-    this.syncTurnTimer();
+    this.syncTimers();
   }
 
   private clearGraceTimer(playerId: PlayerId): void {
@@ -153,10 +156,43 @@ export class RoomActor {
     }
   }
 
-  private syncTurnTimer(): void {
+  private syncTimers(): void {
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    if (this.placementTimer) clearTimeout(this.placementTimer);
+    if (this.rematchTimer) clearTimeout(this.rematchTimer);
     this.turnTimer = null;
+    this.placementTimer = null;
+    this.rematchTimer = null;
     const phase = this.state.phase;
+    if (phase.kind === 'placing') {
+      const deadline = phase.deadline;
+      this.placementTimer = setTimeout(
+        () => {
+          this.expirePlacement(deadline);
+        },
+        Math.max(0, deadline - this.now()),
+      );
+      this.placementTimer.unref();
+      return;
+    }
+    if (phase.kind === 'game_over') {
+      const pending = this.state.order
+        .map((id) => this.state.players[id]!)
+        .filter((player) => player.rematch && player.rematchRequestedAt !== null)
+        .sort((left, right) => left.rematchRequestedAt! - right.rematchRequestedAt!)[0];
+      if (pending === undefined) return;
+      const requestedAt = pending.rematchRequestedAt;
+      if (requestedAt === null) return;
+      const deadline = requestedAt + 5 * 60 * 1_000;
+      this.rematchTimer = setTimeout(
+        () => {
+          this.expireRematch(pending.id, deadline);
+        },
+        Math.max(0, deadline - this.now()),
+      );
+      this.rematchTimer.unref();
+      return;
+    }
     if (phase.kind !== 'in_game') return;
     const current = this.state.players[phase.turn];
     const opponentId = this.state.order.find((id) => id !== phase.turn);
@@ -170,6 +206,42 @@ export class RoomActor {
       Math.max(0, deadline - this.now()),
     );
     this.turnTimer.unref();
+  }
+
+  private expirePlacement(deadline: number): void {
+    this.placementTimer = null;
+    if (
+      this.state.phase.kind !== 'placing' ||
+      this.state.phase.deadline !== deadline ||
+      deadline > this.now()
+    )
+      return;
+    const actor = this.state.order[0];
+    if (!actor) return;
+    const result = reduce(this.state, { type: 'placement.timeout', actor, at: deadline });
+    if (!result.ok) return;
+    this.state = result.value.state;
+    this.broadcast();
+    this.onClosed?.(this.state.id);
+    this.syncTimers();
+  }
+
+  private expireRematch(actor: PlayerId, deadline: number): void {
+    this.rematchTimer = null;
+    const player = this.state.players[actor];
+    if (
+      this.state.phase.kind !== 'game_over' ||
+      player?.rematchRequestedAt === null ||
+      player?.rematchRequestedAt === undefined ||
+      player.rematchRequestedAt + 5 * 60 * 1_000 !== deadline ||
+      deadline > this.now()
+    )
+      return;
+    const result = reduce(this.state, { type: 'game.rematch', actor, accept: false, at: deadline });
+    if (!result.ok) return;
+    this.state = result.value.state;
+    this.broadcast();
+    this.syncTimers();
   }
 
   private expireTurn(deadline: number): void {
@@ -190,6 +262,6 @@ export class RoomActor {
     for (const event of result.value.events)
       if (event.type === 'game.over') this.onGameOver?.(event.winner, this.state.id);
     this.broadcast();
-    this.syncTurnTimer();
+    this.syncTimers();
   }
 }

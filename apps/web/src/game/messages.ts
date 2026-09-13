@@ -4,7 +4,7 @@ export type Difficulty = 'easy' | 'medium' | 'hard';
 type WithoutActor<T> = T extends unknown ? Omit<T, 'actor'> : never;
 
 export type PlayerCommand = WithoutActor<
-  Exclude<Command, { readonly type: 'player.connection' | 'player.timeout' }>
+  Exclude<Command, { readonly type: 'placement.timeout' | 'player.connection' | 'player.timeout' }>
 >;
 
 export type WorkerCommand =

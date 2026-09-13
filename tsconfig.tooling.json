@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": { "noEmit": true },
-  "include": ["vitest.config.ts", "apps/web/vite.config.ts"]
+  "include": ["vitest.config.ts", "playwright.config.ts", "apps/web/vite.config.ts", "e2e"]
 }

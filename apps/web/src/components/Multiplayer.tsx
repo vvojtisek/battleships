@@ -392,6 +392,25 @@ export function MultiplayerRoom() {
     );
   }
 
+  if (snapshot.phase.kind === 'closed') {
+    return (
+      <>
+        <AppNav />
+        <main className="room-home">
+          <p className="eyebrow">Room {code}</p>
+          <h1>Fleet placement expired</h1>
+          <p>
+            Both fleets must be confirmed within three minutes. This room has been closed so you can
+            start or join another game.
+          </p>
+          <Link className="primary-link" to="/multiplayer">
+            Back to multiplayer
+          </Link>
+        </main>
+      </>
+    );
+  }
+
   return (
     <MatchFrame
       canForfeit={snapshot.phase.kind === 'in_game'}
@@ -414,7 +433,7 @@ export function MultiplayerRoom() {
           newGameLabel="Leave room"
           onNewGame={() => void navigate('/multiplayer')}
           onChooseDifficulty={() => void navigate('/single-player')}
-          onRematch={() => send({ type: 'game.rematch', accept: true, at: Date.now() })}
+          onRematch={(accept) => send({ type: 'game.rematch', accept, at: Date.now() })}
           opponentName={snapshot.opponent.displayName ?? 'Opponent'}
           onLeaderboard={() => void navigate('/leaderboard')}
           onMainMenu={() => void navigate('/menu')}
