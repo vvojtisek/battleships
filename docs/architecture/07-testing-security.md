@@ -4,11 +4,11 @@
 
 | Layer | Tool | Scope | Gate |
 |---|---|---|---|
-| Unit + property | Vitest + `fast-check` | `@bs/engine` | **100% statements & branches** |
+| Unit + property | Vitest + `fast-check` | `@bs/engine` | **100% statements, branches, functions, and lines** |
 | Contract | Vitest + Zod | `@bs/protocol` round-trips, version negotiation | 100% of message types |
-| Integration | Vitest + in-process `ws` | `RoomActor`, reconnect, timers | ≥90% |
-| Component | Playwright CT | `packages/ui` primitives, a11y roles | Smoke |
-| E2E | Playwright, 2 browser contexts | Full multiplayer game, disconnect/resume | 6 critical journeys |
+| Integration | Vitest + in-process `ws` | server HTTP, rooms, profiles, timers | ≥80% statements/lines; ≥75% branches; ≥85% functions |
+| Component | Vitest + React Testing Library | landing, board, placement, match, lobby, profile views | Core components ≥65% statements/lines |
+| E2E | Playwright, 2 browser contexts | LAN room creation, join, placement, terminal-match exit | Required smoke journey |
 | Performance | `k6` (WS), Lighthouse CI | 500 rooms/instance, p99 latency, bundle size | Hard budgets |
 | Simulation | Custom Monte Carlo | AI strength regression | `hard` mean ≤ 48 shots |
 

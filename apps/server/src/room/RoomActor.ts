@@ -28,11 +28,14 @@ interface QueuedCommand {
   readonly cmdId: string;
 }
 
+const MAX_SEEN_COMMANDS = 256;
+
 /** Serializes all room changes and is the sole server-side reducer entry point. */
 export class RoomActor {
   private readonly connections = new Map<PlayerId, Connection>();
   private readonly queue: QueuedCommand[] = [];
   private readonly seen = new Map<string, readonly ServerMessage[]>();
+  private readonly seenOrder: string[] = [];
   private readonly graceTimers = new Map<PlayerId, ReturnType<typeof setTimeout>>();
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
   private placementTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,9 +112,17 @@ export class RoomActor {
     }
     this.broadcast(cmdId);
     this.syncTimers();
-    this.seen.set(cmdId, [
+    this.remember(cmdId, [
       { type: 'room.snapshot', state: projectRoom(this.state, from, this.now()), cmdId },
     ]);
+  }
+
+  private remember(cmdId: string, messages: readonly ServerMessage[]): void {
+    this.seen.set(cmdId, messages);
+    this.seenOrder.push(cmdId);
+    if (this.seenOrder.length <= MAX_SEEN_COMMANDS) return;
+    const oldest = this.seenOrder.shift();
+    if (oldest !== undefined) this.seen.delete(oldest);
   }
 
   private updateConnection(playerId: PlayerId, online: boolean): void {

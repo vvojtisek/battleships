@@ -64,7 +64,7 @@ function contrastColor(color: string): string {
 
 function Landing() {
   const navigate = useNavigate();
-  const { active, loading } = useAuth();
+  const { active, enterGuest, loading } = useAuth();
   useEffect(() => {
     if (active) void navigate('/menu', { replace: true });
   }, [active, navigate]);
@@ -79,9 +79,16 @@ function Landing() {
       <Link className="primary-link" to="/auth">
         Log in or register
       </Link>
-      <a className="guest-entry" href="/?guest=1">
+      <button
+        className="guest-entry"
+        onClick={() => {
+          enterGuest();
+          void navigate('/menu', { replace: true });
+        }}
+        type="button"
+      >
         Play as guest
-      </a>
+      </button>
     </main>
   );
 }

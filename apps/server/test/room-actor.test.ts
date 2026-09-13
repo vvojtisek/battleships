@@ -38,6 +38,29 @@ describe('RoomActor', () => {
     expect(second.sent.filter((message) => message.type === 'room.snapshot')).toHaveLength(2);
   });
 
+  it('keeps the idempotency cache bounded and evicts the oldest command', () => {
+    const actor = new RoomActor(
+      createRoom({
+        id: roomId('room'),
+        code: 'ABCDEF',
+        creator: alice,
+        displayName: 'Alice',
+        seed: 1,
+        now: 0,
+      }),
+      () => 10,
+    );
+    const aliceMessages = messages();
+    actor.attach(aliceMessages.connection);
+
+    for (let index = 0; index <= 256; index += 1)
+      actor.submit(alice, { type: 'fleet.random', actor: alice }, `fleet-${index}`);
+
+    const beforeReplay = aliceMessages.sent.length;
+    actor.submit(alice, { type: 'fleet.random', actor: alice }, 'fleet-0');
+    expect(aliceMessages.sent).toHaveLength(beforeReplay + 1);
+  });
+
   it('does not serialize an opponent fleet before game over', () => {
     const state = createRoom({
       id: roomId('room'),

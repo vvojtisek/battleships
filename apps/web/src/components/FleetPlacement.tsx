@@ -7,7 +7,7 @@ import {
   type Direction,
   type ShipKind,
 } from '@bs/engine';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Board } from './Board.js';
 import type { PlayerCommand } from '../game/messages.js';
 import type { ProjectedRoomState } from '@bs/engine';
@@ -41,11 +41,6 @@ export function FleetPlacement({ snapshot, send }: Props) {
       direction === 'V' ? 1 : 0,
       snapshot.rules,
     );
-
-  useEffect(() => {
-    const next = FLEET_SPEC.find(({ kind }) => !placed.has(kind))?.kind;
-    if (next) setSelected(next);
-  }, [snapshot.you.ships]);
 
   function place(cell: Cell, kind = selected): void {
     send({ type: 'fleet.place', shipKind: kind, bow: cell, dir: direction });
