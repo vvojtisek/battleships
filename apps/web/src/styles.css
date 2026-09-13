@@ -749,6 +749,11 @@ main {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent);
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .fleet-under-attack {
+    animation: none;
+  }
+}
 .shot-confirmation {
   margin: 0 0 1.25rem;
   padding: 0.85rem;

@@ -289,7 +289,7 @@ export function Battle({
             <button
               aria-pressed={boardView === 'fleet'}
               className={
-                !latestShotByYou && latestShot?.outcome !== 'miss'
+                latestShot !== undefined && !latestShotByYou && latestShot.outcome !== 'miss'
                   ? 'fleet-under-attack'
                   : undefined
               }

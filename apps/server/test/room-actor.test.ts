@@ -1,5 +1,5 @@
 import { createRoom, playerId, reduce, roomId, type Command, type RoomState } from '@bs/engine';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomActor, type Connection, type ServerMessage } from '../src/index.js';
 
 const alice = playerId('alice');
@@ -12,6 +12,10 @@ const messages = (
 };
 
 describe('RoomActor', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('replays an accepted command without reducing it twice', () => {
     const actor = new RoomActor(
       createRoom({
@@ -85,5 +89,62 @@ describe('RoomActor', () => {
     actor.submit(bob, { type: 'player.resign', actor: bob }, 'resign-1');
 
     expect(winners).toEqual(['alice']);
+  });
+
+  it('passes the first two missed turns and ends the third timeout for the same player', () => {
+    vi.useFakeTimers();
+    let now = 0;
+    let state: RoomState = createRoom({
+      id: roomId('room'),
+      code: 'ABCDEF',
+      creator: alice,
+      displayName: 'Alice',
+      seed: 1,
+      now: 0,
+    });
+    const prepare = (command: Command): void => {
+      const result = reduce(state, command);
+      if (!result.ok) throw new Error(result.detail);
+      state = result.value.state;
+    };
+    prepare({ type: 'room.join', actor: bob, displayName: 'Bob', at: 1 });
+    prepare({ type: 'fleet.random', actor: alice });
+    prepare({ type: 'fleet.random', actor: bob });
+    prepare({ type: 'fleet.commit', actor: alice, at: 2 });
+    prepare({ type: 'fleet.commit', actor: bob, at: 3 });
+    if (state.phase.kind !== 'in_game') throw new Error('expected game');
+    const first = state.phase.turn;
+    const second = first === alice ? bob : alice;
+    const winners: string[] = [];
+    const actor = new RoomActor(
+      state,
+      () => now,
+      (winner) => winners.push(winner),
+    );
+    const firstMessages = messages(first);
+    const secondMessages = messages(second);
+    actor.attach(firstMessages.connection);
+    actor.attach(secondMessages.connection);
+
+    now = 45_003;
+    vi.advanceTimersByTime(45_003);
+    expect(firstMessages.sent.at(-1)).toMatchObject({
+      type: 'room.snapshot',
+      state: { phase: { kind: 'in_game', turn: second } },
+    });
+    now += 45_000;
+    vi.advanceTimersByTime(45_000);
+    now += 45_000;
+    vi.advanceTimersByTime(45_000);
+    now += 45_000;
+    vi.advanceTimersByTime(45_000);
+    expect(winners).toEqual([]);
+    now += 45_000;
+    vi.advanceTimersByTime(45_000);
+    expect(winners).toEqual([second]);
+    expect(firstMessages.sent.at(-1)).toMatchObject({
+      type: 'room.snapshot',
+      state: { phase: { kind: 'game_over', winner: second, reason: 'timeout' } },
+    });
   });
 });

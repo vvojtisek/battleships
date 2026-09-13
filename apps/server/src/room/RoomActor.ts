@@ -180,11 +180,16 @@ export class RoomActor {
       deadline > this.now()
     )
       return;
-    const result = reduce(this.state, { type: 'player.timeout', actor: this.state.phase.turn });
+    const result = reduce(this.state, {
+      type: 'player.timeout',
+      actor: this.state.phase.turn,
+      at: deadline,
+    });
     if (!result.ok) return;
     this.state = result.value.state;
     for (const event of result.value.events)
       if (event.type === 'game.over') this.onGameOver?.(event.winner, this.state.id);
     this.broadcast();
+    this.syncTurnTimer();
   }
 }

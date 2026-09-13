@@ -40,7 +40,7 @@ export type Command =
       readonly at: number;
     }
   | { readonly type: 'player.resign'; readonly actor: PlayerId }
-  | { readonly type: 'player.timeout'; readonly actor: PlayerId }
+  | { readonly type: 'player.timeout'; readonly actor: PlayerId; readonly at: number }
   | {
       /** Server-only connection state used to pause a LAN match during a brief Wi-Fi dropout. */
       readonly type: 'player.connection';
@@ -268,6 +268,7 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
       ...(sunkShip ? { shipKind: sunkShip.kind } : {}),
       at: command.at,
     };
+    const updatedPlayer = { ...player, timeouts: 0 };
     const updatedTarget = { ...target, incoming };
     const won = (incoming & target.fleet) === target.fleet;
     const nextTurn = state.rules.extraTurnOnHit && hit ? command.actor : targetId;
@@ -279,7 +280,12 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
           turnDeadline: command.at + state.rules.turnSeconds * 1000,
           turnNo: state.phase.turnNo + 1,
         };
-    const next = { ...updatePlayer(state, updatedTarget), phase, seq, log: [...state.log, shot] };
+    const next = {
+      ...updatePlayer(updatePlayer(state, updatedPlayer), updatedTarget),
+      phase,
+      seq,
+      log: [...state.log, shot],
+    };
     const events: EngineEvent[] = [{ type: 'shot.result', shot }];
     if (sunkShip)
       events.push({
@@ -293,21 +299,46 @@ export function reduce(state: RoomState, command: Command): ReduceResult {
     return ok({ state: next, events });
   }
 
-  if (command.type === 'player.resign' || command.type === 'player.timeout') {
+  if (command.type === 'player.resign') {
     if (state.phase.kind !== 'in_game') return wrongPhase(state, 'in_game');
-    if (command.type === 'player.timeout' && state.phase.turn !== command.actor)
-      return err('E_NOT_YOUR_TURN', 'only the current player can time out');
     const winner = opponentId(state, command.actor);
     /* v8 ignore next */
     if (winner === null) return err('E_WRONG_PHASE', 'opponent is missing');
     const phase: Phase = {
       kind: 'game_over',
       winner,
-      reason: command.type === 'player.timeout' ? 'timeout' : 'forfeit',
+      reason: 'forfeit',
     };
     return ok({
       state: { ...state, phase, seq: nextSequence(state) },
       events: [{ type: 'game.over', winner, reason: phase.reason }],
+    });
+  }
+
+  if (command.type === 'player.timeout') {
+    if (state.phase.kind !== 'in_game') return wrongPhase(state, 'in_game');
+    if (state.phase.turn !== command.actor)
+      return err('E_NOT_YOUR_TURN', 'only the current player can time out');
+    const opponent = opponentId(state, command.actor);
+    /* v8 ignore next */
+    if (opponent === null) return err('E_WRONG_PHASE', 'opponent is missing');
+    const updated = { ...player, timeouts: player.timeouts + 1 };
+    if (updated.timeouts >= 3) {
+      const phase: Phase = { kind: 'game_over', winner: opponent, reason: 'timeout' };
+      return ok({
+        state: { ...updatePlayer(state, updated), phase, seq: nextSequence(state) },
+        events: [{ type: 'game.over', winner: opponent, reason: 'timeout' }],
+      });
+    }
+    const phase: Phase = {
+      kind: 'in_game',
+      turn: opponent,
+      turnDeadline: command.at + state.rules.turnSeconds * 1_000,
+      turnNo: state.phase.turnNo + 1,
+    };
+    return ok({
+      state: { ...updatePlayer(state, updated), phase, seq: nextSequence(state) },
+      events: [{ type: 'phase.changed', phase }],
     });
   }
 

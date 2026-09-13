@@ -173,7 +173,8 @@ placement, so no code path can accidentally branch on a stale turn value.
 | `ready` | *(auto)* | both committed | `in_game` | `game.started{firstTurn}`, `turn.began` |
 | `in_game` | `turn.fire` | `phase.turn === actor`; cell in range; cell not previously fired by actor | `in_game` or `game_over` | `shot.result`, optional `ship.sunk`, `turn.began` \| `game.over` |
 | `in_game` | `player.resign` | — | `game_over` | `game.over{reason:'forfeit'}` |
-| `in_game` | *(timer)* | 3 consecutive turn timeouts | `game_over` | `game.over{reason:'timeout'}` |
+| `in_game` | *(timer)* | fewer than 3 consecutive timeouts by the turn owner | `in_game` (turn passes) | `phase.changed` |
+| `in_game` | *(timer)* | 3 consecutive timeouts by the same player | `game_over` | `game.over{reason:'timeout'}` |
 | `game_over` | `game.rematch` | both request within 5 min | `placing` | `phase.changed`, fleets cleared, first turn alternates |
 | *any* | `room.leave` | — | `closed` (or `game_over` if in play) | `player.left` |
 

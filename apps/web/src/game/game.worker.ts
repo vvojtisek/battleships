@@ -23,7 +23,8 @@ const human = playerId('local-human');
 const bot = playerId('local-bot');
 let state: RoomState | null = null;
 let difficulty: Difficulty = 'hard';
-let timer: ReturnType<typeof setTimeout> | null = null;
+let botTimer: ReturnType<typeof setTimeout> | null = null;
+let turnTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emit(event: WorkerEvent): void {
   self.postMessage(event);
@@ -42,6 +43,7 @@ function dispatch(command: Command): boolean {
   }
   state = result.value.state;
   snapshot();
+  syncTimers();
   return true;
 }
 
@@ -65,10 +67,11 @@ function botKnowledge(room: RoomState): Knowledge {
 }
 
 function scheduleBot(): void {
+  if (botTimer) clearTimeout(botTimer);
+  botTimer = null;
   if (!state || state.phase.kind !== 'in_game' || state.phase.turn !== bot) return;
-  if (timer) clearTimeout(timer);
   const delayRng = makeRng(state.rngState);
-  timer = setTimeout(
+  botTimer = setTimeout(
     () => {
       if (!state || state.phase.kind !== 'in_game' || state.phase.turn !== bot) return;
       const rng = makeRng(state.rngState);
@@ -80,9 +83,37 @@ function scheduleBot(): void {
   );
 }
 
+function scheduleHumanTimeout(): void {
+  if (turnTimer) clearTimeout(turnTimer);
+  turnTimer = null;
+  if (!state || state.phase.kind !== 'in_game' || state.phase.turn !== human) return;
+  const deadline = state.phase.turnDeadline;
+  turnTimer = setTimeout(
+    () => {
+      if (
+        !state ||
+        state.phase.kind !== 'in_game' ||
+        state.phase.turn !== human ||
+        state.phase.turnDeadline !== deadline
+      )
+        return;
+      dispatch({ type: 'player.timeout', actor: human, at: deadline });
+    },
+    Math.max(0, deadline - Date.now()),
+  );
+}
+
+function syncTimers(): void {
+  scheduleHumanTimeout();
+  scheduleBot();
+}
+
 function newGame(level: Difficulty): void {
   difficulty = level;
-  if (timer) clearTimeout(timer);
+  if (botTimer) clearTimeout(botTimer);
+  if (turnTimer) clearTimeout(turnTimer);
+  botTimer = null;
+  turnTimer = null;
   state = createRoom({
     id: roomId(`local-${Date.now()}-${Math.random().toString(36).slice(2)}`),
     code: 'LOCAL1',
@@ -110,5 +141,5 @@ self.addEventListener('message', ({ data }: MessageEvent<WorkerCommand>) => {
   }
   if (!state) return;
   const command = { ...data.command, actor: human } as Command;
-  if (dispatch(command)) scheduleBot();
+  dispatch(command);
 });

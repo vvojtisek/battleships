@@ -285,7 +285,7 @@ describe('room reducer', () => {
     expect(alternate.phase.kind).toBe('placing');
   });
 
-  test('pauses shots during a disconnect and resolves an expired turn as a timeout', () => {
+  test('pauses shots during a disconnect and forfeits only after three consecutive timeouts', () => {
     let state = readyRoom();
     if (state.phase.kind !== 'in_game') throw new Error('expected game');
     const current = state.phase.turn;
@@ -293,7 +293,7 @@ describe('room reducer', () => {
     expect(
       reduce(state, { type: 'player.connection', actor: current, online: true, at: 2_500 }),
     ).toMatchObject({ ok: true, value: { state, events: [] } });
-    expect(reduce(state, { type: 'player.timeout', actor: other })).toMatchObject({
+    expect(reduce(state, { type: 'player.timeout', actor: other, at: 2_500 })).toMatchObject({
       ok: false,
       code: 'E_NOT_YOUR_TURN',
     });
@@ -304,8 +304,50 @@ describe('room reducer', () => {
     ).toMatchObject({ ok: false, code: 'E_WRONG_PHASE' });
     state = apply(state, { type: 'player.connection', actor: other, online: true, at: 4_000 });
     expect(state.phase).toMatchObject({ kind: 'in_game', turnDeadline: 49_000 });
-    state = apply(state, { type: 'player.timeout', actor: current });
+    state = apply(state, { type: 'player.timeout', actor: current, at: 49_000 });
+    expect(state.phase).toMatchObject({ kind: 'in_game', turn: other, turnDeadline: 94_000 });
+    expect(state.players[current]?.timeouts).toBe(1);
+
+    if (state.phase.kind !== 'in_game') throw new Error('expected game');
+    state = apply(state, {
+      type: 'turn.fire',
+      actor: other,
+      cell: toCell(0, 0),
+      at: state.phase.turnDeadline + 1,
+    });
+    if (state.phase.kind !== 'in_game') throw new Error('expected game');
+    state = apply(state, {
+      type: 'turn.fire',
+      actor: current,
+      cell: toCell(0, 0),
+      at: state.phase.turnDeadline + 1,
+    });
+    expect(state.players[current]?.timeouts).toBe(0);
+
+    for (const cell of [1, 2, 3] as const) {
+      if (state.phase.kind !== 'in_game') throw new Error('expected game');
+      state = apply(state, {
+        type: 'turn.fire',
+        actor: other,
+        cell: toCell(cell, 0),
+        at: state.phase.turnDeadline + 1,
+      });
+      if (state.phase.kind !== 'in_game') throw new Error('expected game');
+      state = apply(state, {
+        type: 'player.timeout',
+        actor: current,
+        at: state.phase.turnDeadline,
+      });
+      if (cell < 3) {
+        expect(state.phase).toMatchObject({ kind: 'in_game', turn: other });
+        expect(state.players[current]?.timeouts).toBe(cell);
+      }
+    }
     expect(state.phase).toMatchObject({ kind: 'game_over', winner: other, reason: 'timeout' });
+    expect(reduce(state, { type: 'player.timeout', actor: current, at: 999_000 })).toMatchObject({
+      ok: false,
+      code: 'E_WRONG_PHASE',
+    });
   });
 });
 
