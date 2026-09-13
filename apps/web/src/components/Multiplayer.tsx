@@ -245,7 +245,6 @@ export function MultiplayerRoom() {
   const [status, setStatus] = useState('Connecting to the LAN server…');
   const [error, setError] = useState<string | null>(null);
   const [resumeToken, setResumeToken] = useState(() => loadToken(code));
-  const [forfeiting, setForfeiting] = useState(false);
   const recordedMatches = useRef(new Set<string>());
   const transport = useMemo(() => new RemoteTransport(serverUrl(), resumeToken), [resumeToken]);
 
@@ -298,12 +297,6 @@ export function MultiplayerRoom() {
     if (phase.winner === snapshot.you.id && profile) void refresh();
   }, [profile, refresh, snapshot]);
 
-  useEffect(() => {
-    if (forfeiting && snapshot?.phase.kind === 'game_over') {
-      void navigate('/menu', { replace: true });
-    }
-  }, [forfeiting, navigate, snapshot]);
-
   function join(): void {
     const displayName = name.trim();
     if (!displayName) return setError('Enter your name before joining.');
@@ -321,7 +314,6 @@ export function MultiplayerRoom() {
   }
 
   function forfeit(): void {
-    setForfeiting(true);
     send({ type: 'player.resign' });
   }
 
@@ -401,7 +393,12 @@ export function MultiplayerRoom() {
   }
 
   return (
-    <MatchFrame mode="LAN multiplayer" onForfeit={forfeit}>
+    <MatchFrame
+      canForfeit={snapshot.phase.kind === 'in_game'}
+      mode="LAN multiplayer"
+      onForfeit={forfeit}
+      phase={snapshot.phase.kind === 'game_over' ? 'over' : 'active'}
+    >
       <p aria-live="polite" className="connection-status">
         {status}
       </p>
@@ -416,8 +413,11 @@ export function MultiplayerRoom() {
         <Battle
           newGameLabel="Leave room"
           onNewGame={() => void navigate('/multiplayer')}
+          onChooseDifficulty={() => void navigate('/single-player')}
           onRematch={() => send({ type: 'game.rematch', accept: true, at: Date.now() })}
           opponentName={snapshot.opponent.displayName ?? 'Opponent'}
+          onLeaderboard={() => void navigate('/leaderboard')}
+          onMainMenu={() => void navigate('/menu')}
           send={send}
           snapshot={snapshot}
         />

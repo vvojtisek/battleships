@@ -21,6 +21,8 @@ interface Props {
   readonly newGameLabel?: string;
   readonly onChooseDifficulty?: () => void;
   readonly onRematch?: () => void;
+  readonly onLeaderboard: () => void;
+  readonly onMainMenu: () => void;
 }
 
 const SOUND_KEY = 'battleships.sound-effects.v1';
@@ -71,6 +73,8 @@ export function Battle({
   newGameLabel = 'Play again',
   onChooseDifficulty,
   onRematch,
+  onLeaderboard,
+  onMainMenu,
 }: Props) {
   const compact = useCompactBattleLayout();
   const [boardView, setBoardView] = useState<'enemy' | 'fleet'>('enemy');
@@ -91,6 +95,7 @@ export function Battle({
   const shots = popcount(opponentShots);
   const hits = popcount(opponentHits);
   const accuracy = shots === 0 ? 0 : Math.round((hits / shots) * 100);
+  const turns = shots + popcount(ownIncoming);
   const shipsRemaining = 5 - snapshot.opponent.sunk.length;
   const latestShot = snapshot.latestShot;
   const latestShotByYou = latestShot?.by === snapshot.you.id;
@@ -203,27 +208,6 @@ export function Battle({
           >
             Sound {soundsEnabled ? 'on' : 'off'}
           </button>
-          {gameOver && (
-            <>
-              {onRematch && (
-                <button disabled={snapshot.you.rematch} onClick={onRematch} type="button">
-                  {snapshot.you.rematch
-                    ? 'Rematch requested'
-                    : snapshot.opponent.rematch
-                      ? 'Accept rematch'
-                      : 'Request rematch'}
-                </button>
-              )}
-              <button onClick={onNewGame} type="button">
-                {newGameLabel}
-              </button>
-              {onChooseDifficulty && (
-                <button onClick={onChooseDifficulty} type="button">
-                  Choose difficulty
-                </button>
-              )}
-            </>
-          )}
         </div>
       </header>
       {difficulty && (
@@ -347,6 +331,15 @@ export function Battle({
           <h2>Enemy waters</h2>
           <Board
             label="Enemy waters board"
+            fleet={
+              gameOver && snapshot.opponent.id
+                ? (snapshot.reveal?.[snapshot.opponent.id]?.reduce(
+                    (mask, ship) =>
+                      ship.cells.reduce((value, cell) => value | (1n << BigInt(cell)), mask),
+                    0n,
+                  ) ?? 0n)
+                : 0n
+            }
             shots={opponentShots}
             hits={opponentHits}
             disabled={!yourTurn || gameOver || opponentDisconnected}
@@ -355,6 +348,74 @@ export function Battle({
           />
         </div>
       </div>
+      {gameOver && (
+        <div
+          aria-modal="true"
+          className="game-over-backdrop"
+          role="dialog"
+          aria-labelledby="game-over-title"
+        >
+          <section className="game-over-panel">
+            <p className="eyebrow">Match complete</p>
+            <h2 id="game-over-title">
+              {snapshot.phase.winner === snapshot.you.id ? 'You won' : `${opponentName} won`}
+            </h2>
+            <p>
+              {snapshot.phase.reason === 'sunk_all'
+                ? 'Every ship in the losing fleet was sunk.'
+                : snapshot.phase.reason === 'forfeit'
+                  ? 'The match ended by surrender.'
+                  : 'The active player ran out of time.'}
+            </p>
+            <p className="game-over-reason">
+              Reason: <strong>{snapshot.phase.reason}</strong>
+            </p>
+            <dl className="game-over-stats">
+              <div>
+                <dt>Shots</dt>
+                <dd>{shots}</dd>
+              </div>
+              <div>
+                <dt>Hits</dt>
+                <dd>{hits}</dd>
+              </div>
+              <div>
+                <dt>Accuracy</dt>
+                <dd>{accuracy}%</dd>
+              </div>
+              <div>
+                <dt>Turns</dt>
+                <dd>{turns}</dd>
+              </div>
+            </dl>
+            <div className="button-row">
+              <button
+                className="primary-button"
+                disabled={Boolean(onRematch && snapshot.you.rematch)}
+                onClick={onRematch ?? onNewGame}
+                type="button"
+              >
+                {onRematch
+                  ? snapshot.you.rematch
+                    ? 'Rematch requested'
+                    : snapshot.opponent.rematch
+                      ? 'Accept rematch'
+                      : 'Play again'
+                  : newGameLabel}
+              </button>
+              <button onClick={onChooseDifficulty ?? onMainMenu} type="button">
+                Choose difficulty
+              </button>
+              <button onClick={onLeaderboard} type="button">
+                Leaderboard
+              </button>
+              <button onClick={onMainMenu} type="button">
+                Main menu
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

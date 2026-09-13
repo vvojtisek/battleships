@@ -8,6 +8,7 @@ interface GameStore {
   readonly error: string | null;
   setDifficulty(difficulty: Difficulty): void;
   receive(snapshot: ProjectedRoomState): void;
+  clearSnapshot(): void;
   fail(message: string): void;
   clearError(): void;
   send: ((command: WorkerCommand) => void) | null;
@@ -21,6 +22,7 @@ export const useGame = create<GameStore>((set) => ({
   send: null,
   setDifficulty: (difficulty) => set({ difficulty }),
   receive: (snapshot) => set({ snapshot, error: null }),
+  clearSnapshot: () => set({ snapshot: null, error: null }),
   fail: (error) => set({ error }),
   clearError: () => set({ error: null }),
   connect: (send) => set({ send }),
